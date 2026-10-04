@@ -1,0 +1,1302 @@
+<!doctype html>
+<!--
+  Évènements & inscriptions — inscription des adhérents d'une association à des évènements
+  Copyright (C) 2026 JLApplis — contact@jlapplis.fr
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Évènements de l'association</title>
+<style>
+  :root{
+    --bg:#f8f7f4;--surface:#fff;--surface-2:#f1efe8;--ink:#2c2c2a;--ink-soft:#5f5e5a;--ink-faint:#8f8d85;--line:#d3d1c7;
+    --accent:#378ade;--accent-deep:#27639f;--accent-ink:#fff;--accent-soft:#e6f1fb;--accent-soft-ink:#183e63;
+    --success:#1d9e75;--success-soft:#e1f5ee;--success-soft-ink:#085041;
+    --warm:#ba7517;--warm-soft:#faeeda;--warm-soft-ink:#7a5210;
+    --danger:#a32d2d;--danger-soft:#fcebeb;
+    --radius:10px;--radius-sm:6px;--shadow-sm:0 1px 4px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.45}
+  h1,h2,h3{font-family:Georgia,serif;font-weight:600;margin:0}
+  button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  [hidden]{display:none !important}
+  .shell{max-width:1200px;margin:0 auto;padding:0 16px 72px}
+  .hero-wrap{background:var(--accent-deep);color:#fff}
+  .hero-inner{max-width:1200px;margin:0 auto;padding:22px 16px 26px}
+  .eyebrow{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.75);font-weight:700}
+  .title{font-size:clamp(1.5rem,3.4vw,2rem);margin-top:6px;color:#fff}
+  .subtitle{color:rgba(255,255,255,.85);max-width:60ch;margin-top:8px;font-size:.92rem}
+  .status-line{margin-top:14px;font-size:.85rem;color:rgba(255,255,255,.8);display:flex;align-items:center;gap:8px}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--warm);flex:none}
+  .status-dot.ok{background:var(--success)}
+  .admin-row{margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .admin-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .admin-form input{background:rgba(255,255,255,.95);border:1px solid transparent;border-radius:var(--radius-sm);padding:7px 10px;font-size:.85rem;color:var(--ink)}
+  .admin-pill{font-size:.78rem;font-weight:700;color:var(--warm-soft-ink);background:var(--warm-soft);border-radius:999px;padding:4px 10px}
+  .link-btn{background:none;border:none;color:var(--accent-deep);font-weight:600;font-size:.85rem;padding:0;text-decoration:underline}
+  .admin-row .link-btn{color:#fff}
+  .admin-form .btn{color:var(--ink);background:#fff;border-color:transparent}
+  .admin-form .btn-ghost{background:none;color:#fff}
+  .error-text{color:var(--danger);font-size:.82rem}
+  .admin-row .error-text{color:#ffd7ce}
+  .ok-text{color:var(--success-soft-ink);font-size:.85rem}
+  .admin-row .ok-text{color:#dcffe6}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:20px}
+  .stat{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:9px 11px;box-shadow:var(--shadow-sm)}
+  .stat-alerte{background:var(--warm-soft);border-left-color:var(--warm)}
+  .stat-alerte .stat-value{color:#8a4b0a}
+  .stat-value{font-family:Georgia,serif;font-size:1.4rem;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat-label{color:var(--ink-soft);font-size:.7rem;margin-top:1px;line-height:1.25}
+  .tabs{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+  .tab{border-radius:var(--radius-sm);border:1px solid transparent;padding:10px 18px;font-weight:700;font-size:1rem;background:var(--accent);color:#fff;box-shadow:var(--shadow-sm)}
+  .tab[data-tab="parametres"]{background:var(--warm)}
+  .tab[aria-selected="true"]{box-shadow:inset 0 0 0 3px rgba(0,0,0,.3)}
+  .panel{padding-top:20px}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .toolbar h2{font-size:1.25rem}
+  .toolbar-meta{color:var(--ink-soft);font-size:.86rem}
+  .btn{border-radius:var(--radius-sm);padding:8px 14px;border:1px solid #000;background:var(--surface);font-weight:600;font-size:.88rem;display:inline-flex;align-items:center;gap:6px}
+  .btn:disabled{opacity:.5;cursor:not-allowed;border-color:transparent}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-danger{background:var(--danger);color:#fff}
+  .btn-ghost{background:none;border-color:transparent;color:var(--ink-soft)}
+  .btn-sm{padding:5px 11px;font-size:.8rem}
+  .btn-danger-ghost{background:none;border:1px solid #000;border-radius:var(--radius-sm);color:var(--danger);padding:5px 10px;font-size:.8rem}
+  .form{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:18px}
+  .field-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+  .field label{font-size:.82rem;font-weight:600;color:var(--ink-soft)}
+  .field input,.field select,.field textarea{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:9px 10px}
+  .form-actions{display:flex;gap:10px;margin-top:6px;align-items:center;flex-wrap:wrap}
+  .form-hint{color:var(--ink-faint);font-size:.8rem}
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:8px}
+  .card-title{font-family:Georgia,serif;font-size:1.1rem;font-weight:600}
+  .meta{color:var(--ink-soft);font-size:.86rem}
+  .head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:.76rem;font-weight:700;white-space:nowrap;background:var(--accent-soft);color:var(--accent-soft-ink)}
+  .badge.low{background:var(--danger-soft);color:var(--danger)}
+  .badge.warm{background:var(--warm-soft);color:var(--warm-soft-ink)}
+  .badge.ok{background:var(--success-soft);color:var(--success-soft-ink)}
+  .empty-state{color:var(--ink-faint);padding:30px 10px;text-align:center;border:1px dashed var(--line);border-radius:var(--radius)}
+  .alert{background:var(--warm-soft);color:var(--warm-soft-ink);border:1px solid var(--warm);border-radius:8px;padding:8px 12px;font-size:.88rem;font-weight:600;margin-bottom:12px}
+  .table-scroll{overflow-x:auto}
+  .tbl{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line)}
+  .tbl th,.tbl td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:.9rem;vertical-align:top}
+  .tbl th{background:var(--surface-2);color:var(--ink-soft);font-size:.76rem;text-transform:uppercase;letter-spacing:.04em}
+  .tbl tbody tr:nth-child(even) td{background:var(--accent-soft)}
+  .tbl tr.clic{cursor:pointer}
+  .tbl tr.clic:hover td{background:var(--surface-2) !important}
+  .num{text-align:right !important;font-variant-numeric:tabular-nums}
+  .th-tri{background:none;border:none;padding:0;font:inherit;text-transform:inherit;letter-spacing:inherit;color:inherit;font-weight:inherit}
+  .th-tri.active{color:var(--accent-deep);font-weight:700}
+  .list-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:8px;flex-wrap:wrap}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(44,44,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow-y:auto;z-index:100}
+  .modal-box{background:var(--surface);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,.28);max-width:820px;width:100%;margin:auto;overflow:hidden}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;background:var(--accent-deep);color:#fff;padding:16px 24px}
+  .modal-head h3{color:#fff;font-size:1.25rem}
+  .modal-close{background:rgba(255,255,255,.16);border:1px solid #000;font-size:1rem;color:#fff;padding:6px 11px;border-radius:999px}
+  .modal-body{padding:20px 24px 24px}
+  .section-title{font-size:.78rem;font-weight:700;letter-spacing:.03em;color:var(--accent-deep);text-transform:uppercase;margin:16px 0 8px;border-top:1px solid var(--line);padding-top:14px}
+  #print-root{display:none}
+  @media print{
+    body > *:not(#print-root){display:none !important}
+    #print-root{display:block;padding:10mm;color:#000;background:#fff}
+    #print-root table{width:100%;border-collapse:collapse;margin:6px 0 14px}
+    #print-root th,#print-root td{border:1px solid #999;padding:4px 7px;font-size:11pt;text-align:left}
+    #print-root .num{text-align:right}
+    #print-root h1{font-size:18pt;margin:0 0 4px}#print-root h2{font-size:13pt;margin:14px 0 4px}
+  }
+  .acc-ligne{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0}
+  .solde-pos{color:var(--danger);font-weight:700}.solde-neg{color:var(--success-soft-ink);font-weight:700}
+  .inscrit-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line);font-size:.88rem}
+  .inscrit-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .check{display:flex;align-items:center;gap:5px;font-size:.8rem;color:var(--ink-soft)}
+  .setup{max-width:720px;margin:40px auto;background:var(--warm-soft);border:1px solid var(--warm);border-radius:var(--radius);padding:20px;color:var(--warm-soft-ink)}
+  .footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);color:var(--ink-faint);font-size:.8rem}
+</style>
+</head>
+<body>
+
+<div class="hero-wrap">
+  <div class="hero-inner">
+    <div class="eyebrow" id="eyebrow">Association — Évènements</div>
+    <h1 class="title">Évènements &amp; inscriptions</h1>
+    <p class="subtitle">Consultez les évènements proposés aux adhérents et inscrivez-vous, vous et vos accompagnants. Les places restantes sont mises à jour en direct.</p>
+    <div class="status-line"><span class="status-dot" id="status-dot"></span><span id="status-text">Connexion à la base de données…</span></div>
+    <div class="admin-row" id="admin-row"></div>
+  </div>
+</div>
+
+<div class="shell">
+  <div class="stats" id="stats"></div>
+  <div class="tabs" id="tabs-bar" role="tablist" hidden>
+    <button class="tab" role="tab" data-tab="evenements" aria-selected="true">Évènements</button>
+    <button class="tab" role="tab" data-tab="adherents" aria-selected="false">Adhérents</button>
+    <button class="tab" role="tab" data-tab="recap" aria-selected="false" id="tab-recap" hidden>Récapitulatif</button>
+    <button class="tab" role="tab" data-tab="historique" aria-selected="false">Historique</button>
+    <button class="tab" role="tab" data-tab="parametres" aria-selected="false" id="tab-parametres" hidden>Paramètres</button>
+  </div>
+  <section class="panel" id="panel-evenements"></section>
+  <section class="panel" id="panel-adherents" hidden></section>
+  <section class="panel" id="panel-recap" hidden></section>
+  <section class="panel" id="panel-historique" hidden></section>
+  <section class="panel" id="panel-parametres" hidden></section>
+  <div class="footer" id="footer">Gestion des évènements de l'association.</div>
+</div>
+
+<div id="modal-root"></div>
+<div id="compte-root"></div>
+<div id="print-root"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+  import { getAuth, signInAnonymously, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+  import { getFirestore, collection, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, doc, getDoc, serverTimestamp, writeBatch, query, where }
+    from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+  // ====== À REMPLIR : configuration de TON nouveau projet Firebase (voir LISEZ-MOI.md) ======
+  const NOM_ASSOCIATION = "Mon association";
+  const firebaseConfig = {
+    apiKey: "AIzaSyAClU986rgOr7uWWzKpQXl8NYZF6odxzoo",
+    authDomain: "evenements-adherents.firebaseapp.com",
+    projectId: "evenements-adherents",
+    storageBucket: "evenements-adherents.firebasestorage.app",
+    messagingSenderId: "355507826974",
+    appId: "1:355507826974:web:ad713839a2a13e91fd590f"
+  };
+  // =========================================================================================
+
+  document.getElementById("eyebrow").textContent = NOM_ASSOCIATION + " — Évènements";
+  document.title = "Évènements — " + NOM_ASSOCIATION;
+  document.getElementById("footer").textContent = NOM_ASSOCIATION + " — gestion des évènements.";
+
+  if(String(firebaseConfig.apiKey).indexOf("REMPLACER") === 0){
+    document.getElementById("status-text").textContent = "Configuration Firebase manquante";
+    document.getElementById("panel-evenements").innerHTML =
+      '<div class="setup"><h2>Configuration à faire</h2><p>Ce fichier doit être relié à un projet Firebase : ouvre-le dans un éditeur de texte, remplace les valeurs « REMPLACER » dans <code>firebaseConfig</code> (et le nom de l\'association), puis publie les règles du fichier <code>firestore.rules</code>. Le pas-à-pas est dans <code>LISEZ-MOI.md</code>.</p></div>';
+    throw new Error("Firebase non configuré");
+  }
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  // Seconde instance : sert uniquement à créer un compte gestionnaire sans déconnecter le Directeur.
+  const secondaryApp = initializeApp(firebaseConfig, "secondary");
+  const secondaryAuth = getAuth(secondaryApp);
+
+  var CATEGORIES_DEFAUT = ["Sortie","Repas","Atelier","Assemblée","Spectacle"];
+  var STATUTS = ["Ouvert","Clos","Annulé"];
+
+  var state = { adherents: [], evenements: [], inscriptions: [], gestionnaires: [], historique: [], mouvements: [], frais: [], fiches: [], categories: CATEGORIES_DEFAUT.slice() };
+  var role = "public", moiNom = "", moiUid = null, moiAdherentId = null;
+  var authReady = false;
+  var currentTab = "evenements";
+  var loginFormOpen = false, loginError = "", loginInfo = "";
+  var identiteFormOpen = false, identiteError = "";
+  var modalEvenementId = null, modalOuverte = false, modalErreur = "";
+  var adherentFormOpen = false, adherentErreur = "";
+  var adherentsRecherche = "", adherentsTri = "nom";
+  var evenementsRecherche = "", evenementsFiltreStatut = "", evenementsAvenirSeulement = true;
+  var historiqueRecherche = "";
+  var equipeFormOpen = false, equipeErreur = "";
+  var avance = false, fraisErreur = "", recapAvenirSeulement = true, compteAdherentId = null, compteEvenementId = null, compteErreur = "", backfillEnCours = false;
+  var unsubFrais = null, unsubFiches = null, unsubMoi = null, unsubMoiAdherent = null, unsubMoiMouv = null, unsubMouvements = null, unsubAdherents = null, unsubGestionnaires = null, unsubHistorique = null;
+  var unsubEvenements = null, unsubInscriptions = null, unsubParametres = null;
+
+  try{ avance = localStorage.getItem("evt-avance") === "1"; }catch(x){ avance = false; }
+  // Mode simple (par défaut) ou « Gestion avancée » : choix personnel de chaque gestionnaire, mémorisé sur son appareil.
+  function modeAvance(){ return role !== "public" && avance; }
+
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+  function fmtDate(iso){
+    try{ var s = new Date(iso+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}); return s.charAt(0).toUpperCase()+s.slice(1); }catch(e){ return iso; }
+  }
+  function fmtDateCourt(iso){ try{ return new Date(iso+"T00:00:00").toLocaleDateString("fr-FR"); }catch(e){ return iso; } }
+  function fmtEuro(n){ return (Math.round((n||0)*100)/100).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
+  function evenementById(id){ return state.evenements.find(function(e){ return e.id === id; }); }
+  function adherentById(id){ return state.adherents.find(function(a){ return a.id === id; }); }
+  function nomAdherent(a){ return a ? (a.prenom+" "+a.nom) : "(adhérent supprimé)"; }
+
+  // L'identifiant d'un adhérent est l'empreinte SHA-256 de son email : les inscriptions
+  // (lisibles publiquement pour compter les places) ne révèlent donc aucune adresse.
+  async function idAdherent(email){
+    var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(email).trim().toLowerCase()));
+    return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+  }
+
+  function inscriptionsDe(evId){ return state.inscriptions.filter(function(i){ return i.evenementId === evId; }); }
+  function personnes(i){ return 1 + (i.nbAccompagnants||0); }
+  function placesPrises(ev){
+    return inscriptionsDe(ev.id).filter(function(i){ return i.statut === "inscrit"; }).reduce(function(s,i){ return s + personnes(i); }, 0);
+  }
+  function placesRestantes(ev){ return ev.placesTotal - placesPrises(ev); }
+  function enAttente(ev){ return inscriptionsDe(ev.id).filter(function(i){ return i.statut === "attente"; }); }
+  function evenementPasse(ev){
+    if(!ev || !ev.date) return false;
+    var t = new Date(ev.date+"T"+(ev.fin||"23:59")+":00").getTime();
+    return !isNaN(t) && t < Date.now();
+  }
+  function montantDu(ev, i){ return (ev.tarif||0) * personnes(i); }
+  function numEv(ev){ return ev && ev.numero ? "N° "+ev.numero : ""; }
+
+  // ---------- compte de l'adhérent (registre des mouvements) ----------
+  // Montant > 0 = somme due par l'adhérent ; montant < 0 = somme reçue (ou avoir). Le solde est la somme.
+  var TYPES_REGLEMENT = ["paiement","annulation_paiement","remboursement"];
+  var LIBELLES_MVT = { inscription:"Inscription", attente:"Inscription en liste d'attente", promotion:"Passage de l'attente à inscrit", ajout:"Ajout d'accompagnant",
+    retrait:"Retrait d'accompagnant", annulation:"Annulation de l'inscription", reprise:"Reprise d'une inscription antérieure",
+    paiement:"Règlement reçu", annulation_paiement:"Règlement annulé (correction)", remboursement:"Remboursement effectué" };
+  function mouvementsDe(adhId, evId){ return state.mouvements.filter(function(m){ return m.adherentId === adhId && m.evenementId === evId; }); }
+  function msDate(m){ try{ return m.date.toMillis(); }catch(e){ return Number.MAX_SAFE_INTEGER; } }
+  // État financier d'une inscription, calculé à partir du registre (ou, à défaut, de l'ancien drapeau « Payé »).
+  function etatPaiement(ev, i){
+    var ms = mouvementsDe(i.adherentId, ev.id);
+    if(!ms.length){
+      var du0 = i.statut === "inscrit" ? montantDu(ev, i) : 0;
+      return { du: du0, regle: i.paye ? du0 : 0, reste: i.paye ? 0 : du0 };
+    }
+    var du = 0, regle = 0;
+    ms.forEach(function(m){ if(TYPES_REGLEMENT.indexOf(m.type) >= 0) regle -= (m.montant||0); else du += (m.montant||0); });
+    return { du: du, regle: regle, reste: Math.round((du - regle)*100)/100 };
+  }
+  function estPaye(ev, i){ var e = etatPaiement(ev, i); return e.du > 0 && e.reste <= 0; }
+  function soldeAdherent(adhId){ return Math.round(state.mouvements.filter(function(m){ return m.adherentId === adhId; }).reduce(function(s,m){ return s + (m.montant||0); }, 0)*100)/100; }
+  // Ajoute un mouvement à un lot d'écritures (écrit en même temps que la modification qui le provoque).
+  function ajouterMouvement(batch, ev, adhId, type, pers, montant, origine, libelleSup){
+    var adh = adherentById(adhId);
+    batch.set(doc(collection(db,"mouvements")), { adherentId: adhId, evenementId: ev.id, evenementNumero: ev.numero || 0, evenementTitre: ev.titre,
+      type: type, libelle: (LIBELLES_MVT[type]||type) + (libelleSup ? " — "+libelleSup : ""), personnes: pers, montant: Math.round(montant*100)/100,
+      parNom: origine === "public" ? nomAdherent(adh) : moiNom, parRole: origine === "public" ? "public" : role, date: serverTimestamp() });
+  }
+  // Une inscription créée avant l'existence du registre reçoit d'abord une ligne de « reprise » à son montant actuel.
+  function avecReprise(batch, ev, i, origine){
+    if(i.statut === "inscrit" && (ev.tarif||0) > 0 && !mouvementsDe(i.adherentId, ev.id).length)
+    {
+      ajouterMouvement(batch, ev, i.adherentId, "reprise", personnes(i), montantDu(ev,i), origine);
+      if(i.paye) ajouterMouvement(batch, ev, i.adherentId, "paiement", 0, -montantDu(ev,i), origine, "reprise");
+    }
+  }
+  // Organisateur d'une fiche = la personne qui l'a créée. Seul lui (et le Directeur, en secours) peut la traiter.
+  function organisateurDe(ev){ return (ev && (ev.organisateurNom || ev.creePar)) || ""; }
+  function peutGerer(ev){
+    if(!ev) return false;
+    if(role === "directeur") return true;
+    return role === "gestionnaire" && !!moiUid && ev.organisateurUid === moiUid;
+  }
+
+  function logHistorique(action, cible, nomDeclare, roleDeclare){
+    addDoc(collection(db,"historique"), { action: action, cible: cible, parNom: nomDeclare || moiNom, parRole: roleDeclare || role, date: serverTimestamp() })
+      .catch(function(e){ console.error("historique:", e); });
+  }
+  function reportError(err){ console.error(err); alert("Une erreur est survenue : " + (err && err.message ? err.message : err)); }
+
+  // ---------- finances d'un évènement ----------
+  var FRAIS_CATEGORIES = ["Salle / location","Traiteur / repas","Transport","Animation / intervenant","Assurance","Matériel","Communication","Divers"];
+  function fraisDe(evId){ return state.frais.filter(function(f){ return f.evenementId === evId; }).sort(function(a,b){ return (a.date||"").localeCompare(b.date||""); }); }
+  function estRecette(f){ return f.sens === "recette"; }
+  function ficheDe(evId){ return state.fiches.find(function(f){ return f.id === evId; }) || null; }
+  function lienSur(u){ return /^https?:\/\//i.test(u||"") ? u : ""; }
+  // Bilan : « engagé » = total des dépenses saisies ; « encaissé » = versements nets reçus des inscrits ;
+  // « autres recettes » = subventions, buvette, sponsor… saisies à la main (reçues ou attendues).
+  function bilanEvenement(ev){
+    var tous = fraisDe(ev.id), fr = tous.filter(function(f){ return !estRecette(f); }), rec = tous.filter(estRecette);
+    var engage = 0, fraisPayes = 0, recRecues = 0, recAttendues = 0;
+    fr.forEach(function(f){ engage += (f.montant||0); if(f.statut === "paye") fraisPayes += (f.montant||0); });
+    rec.forEach(function(f){ if(f.statut === "paye") recRecues += (f.montant||0); else recAttendues += (f.montant||0); });
+    var du = 0, regle = 0, pers = 0;
+    inscriptionsDe(ev.id).filter(function(i){ return i.statut === "inscrit"; }).forEach(function(i){
+      var ep = etatPaiement(ev, i); du += ep.du; regle += ep.regle; pers += personnes(i);
+    });
+    function r2(x){ return Math.round(x*100)/100; }
+    var fiche = ficheDe(ev.id), budget = fiche && typeof fiche.budget === "number" ? fiche.budget : null;
+    return { frais: fr, recettes: rec, engage: r2(engage), fraisPayes: r2(fraisPayes), fraisAPayer: r2(engage - fraisPayes),
+      recettesRecues: r2(recRecues), recettesAttendues: r2(recAttendues), budget: budget, ecartBudget: budget === null ? null : r2(budget - engage),
+      du: r2(du), regle: r2(regle), resteEncaisser: r2(Math.max(0, du - regle)),
+      resultat: r2(regle + recRecues - engage), previsionnel: r2(du + recRecues + recAttendues - engage), personnes: pers,
+      coutParPersonne: pers ? r2(engage / pers) : 0, rappels: (fiche && fiche.rappels) || [] };
+  }
+  var RAPPELS_TYPES = ["Assurance à vérifier", "Autorisation / réservation du lieu", "Matériel à prévoir", "Prévenir les adhérents (rappel de date et lieu)", "Liste des inscrits imprimée pour le jour J", "Encaisser les soldes restants", "Régler les fournisseurs"];
+
+  // ---------- connexion gestionnaire ----------
+  function renderAdminRow(){
+    var el = document.getElementById("admin-row");
+    if(role !== "public"){
+      el.innerHTML = '<span class="admin-pill">Connecté : '+esc(moiNom)+' ('+(role==="directeur"?"Directeur":"Gestionnaire")+')</span><button class="link-btn" data-action="toggle-avance" title="Affiche les finances de l\'évènement et le récapitulatif">'+(avance?'☑':'☐')+' Gestion avancée</button><button class="link-btn" data-action="logout">Se déconnecter</button>';
+      return;
+    }
+    if(!loginFormOpen){ el.innerHTML = '<button class="link-btn" data-action="open-login">Connexion gestionnaire / Directeur</button>'; return; }
+    el.innerHTML = '<form class="admin-form" id="form-login">'
+      + '<input type="email" name="email" placeholder="Email" autocomplete="username" required>'
+      + '<input type="password" name="code" placeholder="Code secret" autocomplete="current-password" required>'
+      + '<button type="submit" class="btn btn-sm">Se connecter</button>'
+      + '<button type="button" class="btn btn-ghost btn-sm" data-action="cancel-login" style="color:#fff">Annuler</button>'
+      + '<button type="button" class="link-btn" data-action="mdp-oublie">Code oublié ?</button>'
+      + (loginError ? '<span class="error-text">'+esc(loginError)+'</span>' : '')
+      + (loginInfo ? '<span class="ok-text">'+esc(loginInfo)+'</span>' : '') + '</form>';
+  }
+
+  // ---------- tuiles ----------
+  function renderStats(){
+    var tuiles = [];
+    var aVenirOuverts = state.evenements.filter(function(e){ return e.statut === "Ouvert" && !evenementPasse(e); });
+    var placesLibres = aVenirOuverts.reduce(function(s,e){ return s + Math.max(0, placesRestantes(e)); }, 0);
+    function stat(v,l,alerte){ return '<div class="stat'+(alerte?" stat-alerte":"")+'"><div class="stat-value">'+v+'</div><div class="stat-label">'+l+'</div></div>'; }
+    if(role === "public"){
+      tuiles.push(stat(aVenirOuverts.length,"Évènements proposés"), stat(placesLibres,"Places disponibles"));
+    } else {
+      var demandes = state.inscriptions.filter(function(i){ return i.demandeAnnulation && peutGerer(evenementById(i.evenementId)); }).length;
+      var impayes = 0;
+      state.inscriptions.forEach(function(i){
+        var ev = evenementById(i.evenementId);
+        if(ev && peutGerer(ev) && i.statut === "inscrit" && (ev.tarif||0) > 0 && etatPaiement(ev,i).reste > 0) impayes++;
+      });
+      if(demandes) tuiles.push(stat(demandes, "Demande"+(demandes>1?"s":"")+" d'annulation", true));
+      if(impayes) tuiles.push(stat(impayes, "Paiement"+(impayes>1?"s":"")+" en attente", true));
+      var inscritsAvenir = 0, attenteAvenir = 0;
+      aVenirOuverts.forEach(function(e){ inscritsAvenir += placesPrises(e); attenteAvenir += enAttente(e).reduce(function(s,i){ return s+personnes(i); },0); });
+      tuiles.push(stat(aVenirOuverts.length,"Évènements à venir"), stat(placesLibres,"Places libres"),
+        stat(inscritsAvenir,"Personnes inscrites (à venir)"), stat(attenteAvenir,"Personnes en attente"),
+        stat(state.adherents.filter(function(a){ return a.actif; }).length,"Adhérents actifs"));
+    }
+    document.getElementById("stats").innerHTML = tuiles.join("");
+  }
+
+  // ---------- évènements ----------
+  function carteEvenementPublic(ev){
+    var restantes = placesRestantes(ev);
+    var moi = moiAdherentId ? adherentById(moiAdherentId) : null;
+    var monInscription = moiAdherentId ? inscriptionsDe(ev.id).find(function(i){ return i.adherentId === moiAdherentId; }) : null;
+    var badge = restantes <= 0 ? '<span class="badge low">Complet</span>' : '<span class="badge">'+restantes+' place'+(restantes>1?'s':'')+' restante'+(restantes>1?'s':'')+'</span>';
+    var action = "";
+    if(!moi){
+      action = '<div class="meta">Identifiez-vous ci-dessus pour vous inscrire.</div>';
+    } else if(monInscription){
+      var st = monInscription.statut === "attente" ? '<span class="badge warm">En liste d\'attente</span>' : '<span class="badge ok">✓ Vous êtes inscrit·e ('+personnes(monInscription)+' pers.)</span>';
+      var ep = etatPaiement(ev, monInscription);
+      var peutModifier = ev.statut === "Ouvert" && !evenementPasse(ev) && !monInscription.demandeAnnulation && authReady;
+      var nbAcc = monInscription.nbAccompagnants || 0;
+      var plusOk = peutModifier && nbAcc < 10 && (monInscription.statut === "attente" || restantes >= 1);
+      action = '<div>'+st+'</div>'
+        + '<div class="acc-ligne"><span>Accompagnants : <strong>'+nbAcc+'</strong></span>'
+        + (peutModifier ? '<button type="button" class="btn btn-ghost btn-sm" data-action="modifier-acc" data-id="'+monInscription.id+'" data-delta="-1" '+(nbAcc<=0?'disabled':'')+'>− Retirer une personne</button>'
+          + '<button type="button" class="btn btn-ghost btn-sm" data-action="modifier-acc" data-id="'+monInscription.id+'" data-delta="1" '+(plusOk?'':'disabled')+'>+ Ajouter une personne</button>' : '')
+        + '</div>'
+        + (peutModifier && monInscription.statut === "inscrit" && restantes < 1 ? '<div class="meta">Plus de place disponible pour ajouter quelqu\'un.</div>' : '')
+        + ((ev.tarif||0)>0 && monInscription.statut==="inscrit" ? '<div class="meta">Montant : '+fmtEuro(ep.du)+' · Réglé : '+fmtEuro(ep.regle)+' · '
+            + (ep.reste > 0 ? '<strong>Reste à régler : '+fmtEuro(ep.reste)+'</strong>' : (ep.reste < 0 ? '<strong>À vous rembourser : '+fmtEuro(-ep.reste)+'</strong>' : '<strong>Soldé</strong>'))+'</div>' : '')
+        + (monInscription.demandeAnnulation ? '<div class="meta">Votre demande d\'annulation a été transmise.</div>'
+          : '<div><button class="btn btn-ghost btn-sm" data-action="demander-annulation" data-id="'+monInscription.id+'">Demander l\'annulation</button></div>');
+    } else if(!moi.actif){
+      action = '<div class="meta">Votre fiche est inactive : contactez l\'association.</div>';
+    } else {
+      action = '<div class="field" style="margin:6px 0 0"><label for="acc-'+ev.id+'" style="font-weight:700;color:var(--ink)">Nombre d\'accompagnants (0 si vous venez seul·e)</label>'
+        + '<input type="number" min="0" max="10" value="0" id="acc-'+ev.id+'" style="width:90px"></div>'
+        + '<div class="form-actions"><button class="btn btn-primary btn-sm" data-action="inscrire-moi" data-id="'+ev.id+'" '+(authReady?"":"disabled")+'>'+(restantes<=0 ? "Rejoindre la liste d'attente" : "M'inscrire")+'</button></div>';
+    }
+    return '<div class="card"><div class="head"><span class="badge">'+esc(ev.categorie||"")+'</span>'+badge+'</div>'
+      + '<div class="card-title">'+esc(ev.titre)+(ev.numero?' <span class="meta">('+numEv(ev)+')</span>':'')+'</div>'
+      + '<div class="meta">'+fmtDate(ev.date)+' · '+esc(ev.debut)+'–'+esc(ev.fin)+'</div>'
+      + '<div class="meta">'+esc(ev.lieu)+'</div>'
+      + (organisateurDe(ev) ? '<div class="meta">Organisé par <strong>'+esc(organisateurDe(ev))+'</strong></div>' : '')
+      + '<div class="meta">'+((ev.tarif||0)>0 ? 'Tarif : '+fmtEuro(ev.tarif)+' par personne' : 'Gratuit')+'</div>'
+      + (ev.description ? '<div class="meta">'+esc(ev.description)+'</div>' : '')
+      + action + '</div>';
+  }
+
+  function renderIdentite(){
+    if(role !== "public") return "";
+    var moi = moiAdherentId ? adherentById(moiAdherentId) : null;
+    if(moi){
+      return '<div class="card" style="margin-bottom:14px"><div>Vous êtes identifié(e) comme <strong>'+esc(moi.prenom+" "+moi.nom)+'</strong>. <button class="link-btn" data-action="changer-identite">Ce n\'est pas vous ?</button></div></div>';
+    }
+    if(!identiteFormOpen){
+      return '<div class="card" style="margin-bottom:14px"><div>Identifiez-vous pour vous inscrire à un évènement.</div><div><button class="btn btn-sm" data-action="open-identite">Je m\'identifie</button></div></div>';
+    }
+    return '<div class="card" style="margin-bottom:14px"><div>Les informations doivent correspondre à votre fiche d\'adhérent :</div>'
+      + '<form class="form" id="form-identite"><div class="field-row">'
+      + champ("Prénom","prenom","text","",true) + champ("Nom","nom","text","",true) + champ("Email","email","email","",true)
+      + '</div><div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Valider</button>'
+      + '<button type="button" class="btn btn-ghost btn-sm" data-action="cancel-identite">Annuler</button>'
+      + (identiteError ? '<span class="error-text">'+esc(identiteError)+'</span>' : '') + '</div></form></div>';
+  }
+
+  function champ(label, name, type, value, required, extra){
+    return '<div class="field"><label for="f-'+name+'">'+label+'</label><input id="f-'+name+'" name="'+name+'" type="'+(type||"text")+'" '
+      + (required?"required ":"") + (extra||"") + (value!=null && value!=="" ? 'value="'+esc(value)+'"' : '') + '></div>';
+  }
+
+  function renderEvenements(){
+    var html;
+    if(role === "public"){
+      var visibles = state.evenements.filter(function(e){ return e.statut === "Ouvert" && !evenementPasse(e); })
+        .sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
+      html = '<div class="toolbar"><h2>Évènements</h2></div>' + renderIdentite()
+        + (visibles.length ? '<div class="card-grid">'+visibles.map(carteEvenementPublic).join("")+'</div>' : '<div class="empty-state">Aucun évènement proposé pour l\'instant.</div>');
+      document.getElementById("panel-evenements").innerHTML = html;
+      return;
+    }
+    var r = evenementsRecherche.trim().toLowerCase();
+    var liste = state.evenements.filter(function(e){
+      if(evenementsAvenirSeulement && evenementPasse(e)) return false;
+      if(evenementsFiltreStatut && e.statut !== evenementsFiltreStatut) return false;
+      if(!r) return true;
+      return (e.titre||"").toLowerCase().indexOf(r) >= 0 || (e.lieu||"").toLowerCase().indexOf(r) >= 0 || (e.categorie||"").toLowerCase().indexOf(r) >= 0;
+    }).sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
+    var demandes = state.inscriptions.filter(function(i){ return i.demandeAnnulation && peutGerer(evenementById(i.evenementId)); }).length;
+    var lignes = liste.map(function(e){
+      var att = enAttente(e).length;
+      var dem = peutGerer(e) && inscriptionsDe(e.id).some(function(i){ return i.demandeAnnulation; });
+      return '<tr class="clic" data-action="edit-evenement" data-id="'+e.id+'">'
+        + '<td class="num">'+(e.numero||"—")+'</td><td><strong>'+fmtDateCourt(e.date)+'</strong><div class="meta">'+esc(e.debut)+'–'+esc(e.fin)+'</div></td>'
+        + '<td>'+esc(e.titre)+(dem?' <span class="badge warm">⚠ annulation</span>':'')+'<div class="meta">'+esc(e.lieu)+'</div></td>'
+        + '<td>'+esc(e.categorie||"")+'</td>'
+        + '<td>'+esc(organisateurDe(e)||"—")+(peutGerer(e)?'':' <span class="meta">(lecture)</span>')+'</td>'
+        + '<td class="num"><span class="badge'+(placesRestantes(e)<=0?' low':'')+'">'+placesPrises(e)+' / '+e.placesTotal+'</span></td>'
+        + '<td class="num">'+att+'</td><td class="num">'+((e.tarif||0)>0?fmtEuro(e.tarif):'Gratuit')+'</td>'
+        + '<td><span class="badge'+(e.statut==="Ouvert"?' ok':(e.statut==="Annulé"?' low':' warm'))+'">'+esc(e.statut)+'</span></td></tr>';
+    }).join("");
+    html = '<div class="toolbar"><h2>Évènements</h2><button class="btn btn-primary" data-action="open-evenement">+ Créer un évènement</button></div>'
+      + (demandes ? '<div class="alert">⚠ '+demandes+' demande(s) d\'annulation en attente : ouvrez l\'évènement concerné pour les traiter.</div>' : '')
+      + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">'
+      + '<div class="field" style="min-width:240px"><label for="ev-recherche">Recherche</label><input type="search" id="ev-recherche" value="'+esc(evenementsRecherche)+'" placeholder="Titre, lieu, catégorie…"></div>'
+      + '<div class="field"><label for="ev-statut">Statut</label><select id="ev-statut"><option value="">Tous</option>'+STATUTS.map(function(s){ return '<option'+(s===evenementsFiltreStatut?' selected':'')+'>'+s+'</option>'; }).join("")+'</select></div>'
+      + '<label class="check field" style="flex-direction:row;align-items:center"><input type="checkbox" id="ev-avenir" '+(evenementsAvenirSeulement?'checked':'')+'> À venir seulement</label></div>'
+      + (liste.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th class="num">N°</th><th>Date</th><th>Évènement</th><th>Catégorie</th><th>Organisateur</th><th class="num">Inscrits / places</th><th class="num">Attente</th><th class="num">Tarif</th><th>Statut</th></tr></thead><tbody>'+lignes+'</tbody></table></div>'
+        : '<div class="empty-state">Aucun évènement ne correspond.</div>');
+    document.getElementById("panel-evenements").innerHTML = html;
+  }
+
+  // ---------- modale évènement ----------
+  function renderModal(){
+    var root = document.getElementById("modal-root");
+    if(!modalOuverte){ root.innerHTML = ""; return; }
+    var ev = modalEvenementId ? evenementById(modalEvenementId) : null;
+    if(modalEvenementId && !ev){ modalOuverte = false; modalEvenementId = null; root.innerHTML = ""; return; }
+    var cats = state.categories.slice(); if(ev && ev.categorie && cats.indexOf(ev.categorie) < 0) cats.push(ev.categorie);
+    if(ev && !peutGerer(ev)){
+      root.innerHTML = '<div class="modal-backdrop" data-action="close-modal"><div class="modal-box">'
+        + '<div class="modal-head"><h3>'+esc(ev.titre)+(ev.numero?" ("+numEv(ev)+")":"")+'</h3><button type="button" class="modal-close" data-action="cancel-modal" aria-label="Fermer">✕</button></div>'
+        + '<div class="modal-body"><div class="alert">Cette fiche est gérée par '+esc(organisateurDe(ev)||"son organisateur")+' : vous pouvez la consulter, mais pas la modifier.</div>'
+        + '<div class="meta">'+fmtDate(ev.date)+' · '+esc(ev.debut)+'–'+esc(ev.fin)+'</div>'
+        + '<div class="meta">'+esc(ev.lieu)+' · '+esc(ev.categorie||"")+' · '+esc(ev.statut)+'</div>'
+        + '<div class="meta">'+((ev.tarif||0)>0 ? 'Tarif : '+fmtEuro(ev.tarif)+' par personne' : 'Gratuit')+'</div>'
+        + (ev.description ? '<div class="meta">'+esc(ev.description)+'</div>' : '')
+        + '<div id="inscrits-zone"></div>'
+        + '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="cancel-modal">Fermer</button></div></div></div></div>';
+      renderInscritsZone(); return;
+    }
+    function sel(label,name,opts,val){ return '<div class="field"><label for="f-'+name+'">'+label+'</label><select id="f-'+name+'" name="'+name+'">'+opts.map(function(o){ return '<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>'; }).join("")+'</select></div>'; }
+    root.innerHTML = '<div class="modal-backdrop" data-action="close-modal"><div class="modal-box">'
+      + '<div class="modal-head"><h3>'+(ev?"Modifier l'évènement"+(ev.numero?" "+numEv(ev):""):"Créer un évènement")+'</h3><button type="button" class="modal-close" data-action="cancel-modal" aria-label="Fermer">✕</button></div>'
+      + '<div class="modal-body"><form id="form-evenement">'
+      + (ev ? '<div class="meta" style="margin-bottom:10px">Organisateur : <strong>'+esc(organisateurDe(ev)||"—")+'</strong></div>' : '')
+      + champ("Titre","titre","text",ev?ev.titre:"",true)
+      + '<div class="field-row">'+sel("Catégorie","categorie",cats,ev?ev.categorie:cats[0])+sel("Statut","statut",STATUTS,ev?ev.statut:"Ouvert")+'</div>'
+      + '<div class="field-row">'+champ("Date","date","date",ev?ev.date:"",true)+champ("Lieu","lieu","text",ev?ev.lieu:"",true)+'</div>'
+      + '<div class="field-row">'+champ("Début","debut","time",ev?ev.debut:"",true)+champ("Fin","fin","time",ev?ev.fin:"",true)
+      + champ("Places","placesTotal","number",ev?ev.placesTotal:"",true,'min="1" ')+champ("Tarif par personne (€, 0 = gratuit)","tarif","number",ev?(ev.tarif||0):0,true,'min="0" step="0.01" ')+'</div>'
+      + '<div class="field"><label for="f-description">Description (visible par tous)</label><textarea id="f-description" name="description" rows="2">'+esc(ev?ev.description:"")+'</textarea></div>'
+      + (modalErreur ? '<div class="error-text" style="margin-bottom:8px">'+esc(modalErreur)+'</div>' : '')
+      + '<div class="form-actions"><button type="submit" class="btn btn-primary" '+(authReady?"":"disabled")+'>💾 '+(ev?"Enregistrer":"Créer")+'</button>'
+      + '<button type="button" class="btn btn-ghost" data-action="cancel-modal">Fermer</button>'
+      + (ev && role==="directeur" ? '<button type="button" class="btn-danger-ghost" data-action="delete-evenement" data-id="'+ev.id+'">Supprimer l\'évènement</button>' : '')
+      + '</div></form>'
+      + (ev ? '<div id="inscrits-zone"></div><div id="finances-zone"></div>' + formulaireFrais() : '') + '</div></div></div>';
+    renderInscritsZone(); renderFinancesZone();
+  }
+
+  function formulaireFrais(){
+    if(!modeAvance()) return "";
+    var d = new Date(), p2 = function(n){ return String(n).padStart(2,"0"); };
+    var auj = d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
+    var ev = modalEvenementId ? evenementById(modalEvenementId) : null, fiche = ev ? ficheDe(ev.id) : null;
+    var budgetVal = fiche && typeof fiche.budget === "number" ? fiche.budget : "";
+    return '<form id="form-budget" class="form" style="margin-top:10px"><div class="section-title">Budget prévu</div><div class="field-row">'
+      + champ("Budget prévu pour l\'évènement (€, vide = aucun)","budget","number",budgetVal,false,'min="0" step="0.01" ')
+      + '</div><div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Enregistrer le budget</button></div></form>'
+      + '<form id="form-frais" class="form" style="margin-top:10px"><div class="section-title">Ajouter un frais ou une recette</div><div class="field-row">'
+      + '<div class="field"><label for="fr-sens">Type</label><select id="fr-sens" name="sens"><option value="depense">Frais engagé</option><option value="recette">Autre recette</option></select></div>'
+      + champ("Date","date","date",auj,true) + champ("Libellé","libelle","text","",true) + champ("Fournisseur / origine (facultatif)","fournisseur","text","",false)
+      + '<div class="field"><label for="fr-cat">Catégorie</label><input id="fr-cat" name="categorie" list="fr-cats" placeholder="Choisir ou écrire"><datalist id="fr-cats">'
+      + FRAIS_CATEGORIES.concat(["Subvention","Sponsor / don","Buvette","Vente"]).map(function(c){ return '<option value="'+esc(c)+'">'; }).join("")+'</datalist></div>'
+      + champ("Montant (€)","montant","number","",true,'min="0.01" step="0.01" ')
+      + '<div class="field"><label for="fr-st">État</label><select id="fr-st" name="statut"><option value="a_payer">À payer / attendue</option><option value="paye">Payé / reçue</option></select></div>'
+      + champ("N° de facture (facultatif)","reference","text","",false) + champ("Lien du justificatif (facultatif, https://…)","lien","url","",false)
+      + '</div>' + (fraisErreur ? '<div class="error-text">'+esc(fraisErreur)+'</div>' : '')
+      + '<div class="form-hint">Le justificatif n\'est pas stocké dans l\'appli : colle ici le lien d\'un fichier rangé ailleurs (Drive…).</div>'
+      + '<div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Ajouter</button></div></form>'
+      + '<form id="form-rappel" class="form" style="margin-top:10px"><div class="section-title">Ajouter un rappel</div><div class="field-row">'
+      + champ("Rappel (assurance, autorisation, matériel…)","texte","text","",true)
+      + '</div><div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Ajouter le rappel</button>'
+      + '<button type="button" class="btn btn-ghost btn-sm" data-action="rappels-types">Ajouter les rappels types</button></div></form>';
+  }
+
+  // Zone des inscrits : re-rendue seule, pour ne jamais effacer ce qui est en cours de saisie dans le formulaire.
+  function renderInscritsZone(){
+    var zone = document.getElementById("inscrits-zone");
+    if(!zone || !modalEvenementId) return;
+    var ev = evenementById(modalEvenementId);
+    if(!ev){ return; }
+    var ins = inscriptionsDe(ev.id).slice().sort(function(a,b){
+      if(a.statut !== b.statut) return a.statut === "inscrit" ? -1 : 1;
+      return nomAdherent(adherentById(a.adherentId)).localeCompare(nomAdherent(adherentById(b.adherentId)), "fr");
+    });
+    var restantes = placesRestantes(ev);
+    var gere = peutGerer(ev);
+    var rows = ins.map(function(i){
+      var a = adherentById(i.adherentId);
+      var tarif = (ev.tarif||0) > 0;
+      var ep = etatPaiement(ev, i), paye = ep.du > 0 && ep.reste <= 0;
+      return '<div class="inscrit-row"><div><strong>'+esc(nomAdherent(a))+'</strong> '
+        + (i.nbAccompagnants ? '<span class="meta">+ '+i.nbAccompagnants+' accompagnant(s)</span> ' : '')
+        + (i.statut==="attente" ? '<span class="badge warm">Liste d\'attente</span> ' : '')
+        + (i.demandeAnnulation ? '<span class="badge low">⚠ Annulation demandée</span> ' : '')
+        + (tarif && i.statut==="inscrit" ? '<span class="meta">· '+fmtEuro(ep.du)+(ep.reste>0 ? ' (reste '+fmtEuro(ep.reste)+')' : (ep.reste<0 ? ' (à rembourser '+fmtEuro(-ep.reste)+')' : ''))+'</span>' : '') + '</div>'
+        + '<div class="inscrit-actions">'
+        + (gere ? (
+          (i.statut==="inscrit" ? '<label class="check"><input type="checkbox" data-action="toggle-present" data-id="'+i.id+'" '+(i.present?'checked':'')+'> Présent</label>' : '')
+          + (i.statut==="inscrit" && tarif ? '<label class="check"><input type="checkbox" data-action="toggle-paye" data-id="'+i.id+'" '+(paye?'checked':'')+'> Payé</label>' : '')
+          + (i.statut==="attente" ? '<button type="button" class="btn btn-sm" data-action="promouvoir" data-id="'+i.id+'">Passer en inscrit</button>' : '')
+          + (i.demandeAnnulation ? '<button type="button" class="link-btn" data-action="ignorer-annulation" data-id="'+i.id+'">Ignorer</button>' : '')
+          + (i.statut==="inscrit" && tarif ? '<button type="button" class="btn btn-ghost btn-sm" data-action="ouvrir-compte" data-id="'+i.adherentId+'" data-ev="'+ev.id+'">💶 Versement</button>' : '')
+          + '<button type="button" class="btn-danger-ghost" data-action="retirer" data-id="'+i.id+'">Retirer</button>'
+        ) : (
+          (i.statut==="inscrit" && i.present ? '<span class="badge ok">Présent</span>' : '')
+          + (i.statut==="inscrit" && tarif ? (paye ? '<span class="badge ok">Payé</span>' : '<span class="badge warm">Non payé</span>') : '')
+        )) + '</div></div>';
+    }).join("");
+    var dispo = state.adherents.filter(function(a){ return a.actif && !ins.some(function(i){ return i.adherentId === a.id; }); })
+      .sort(function(a,b){ return nomAdherent(a).localeCompare(nomAdherent(b),"fr"); });
+    var ajout = !gere ? '' : dispo.length
+      ? '<div class="form-actions" style="margin-top:12px"><select id="sel-adherent">'+dispo.map(function(a){ return '<option value="'+a.id+'">'+esc(a.nom+" "+a.prenom)+'</option>'; }).join("")+'</select>'
+        + '<label class="check">Accompagnants <input type="number" id="sel-acc" min="0" max="10" value="0" style="width:60px"></label>'
+        + '<button type="button" class="btn btn-sm" data-action="inscrire-adherent" data-id="'+ev.id+'">Inscrire</button></div>'
+      : '<div class="meta" style="margin-top:12px">Tous les adhérents actifs sont déjà inscrits.</div>';
+    zone.innerHTML = '<div class="section-title">👥 Inscrits — '+placesPrises(ev)+' / '+ev.placesTotal+' places ('+(restantes<=0?'complet':restantes+' libre(s)')+')</div>'
+      + (rows || '<div class="meta">Personne d\'inscrit pour le moment.</div>') + ajout;
+  }
+
+  function classeMontant(x){ return x < 0 ? "solde-pos" : (x > 0 ? "solde-neg" : ""); }
+  function renderFinancesZone(){
+    var zone = document.getElementById("finances-zone");
+    if(!zone || !modalEvenementId) return;
+    var ev = evenementById(modalEvenementId);
+    if(!ev || !peutGerer(ev) || !modeAvance()){ zone.innerHTML = ""; return; }
+    var b = bilanEvenement(ev);
+    function tuile(l, v, c){ return '<div class="stat"><div class="stat-value '+(c||"")+'" style="font-size:1.3rem">'+v+'</div><div class="stat-label">'+l+'</div></div>'; }
+    function table(liste, recette){
+      if(!liste.length) return '<div class="meta">'+(recette ? "Aucune autre recette saisie." : "Aucun frais saisi pour le moment.")+'</div>';
+      return '<div class="table-scroll"><table class="tbl"><thead><tr><th>Date</th><th>'+(recette?"Recette":"Frais")+'</th><th>Catégorie</th><th class="num">Montant</th><th></th><th></th></tr></thead><tbody>'
+        + liste.map(function(f){
+          return '<tr><td>'+fmtDateCourt(f.date)+'</td><td>'+esc(f.libelle)+(f.fournisseur?'<div class="meta">'+esc(f.fournisseur)+'</div>':'')
+            + ((f.reference||lienSur(f.lien)) ? '<div class="meta">'+(f.reference?'Réf. '+esc(f.reference)+' ':'')+(lienSur(f.lien)?'<a href="'+esc(lienSur(f.lien))+'" target="_blank" rel="noopener">justificatif ↗</a>':'')+'</div>' : '')+'</td>'
+            + '<td>'+esc(f.categorie||"")+'</td><td class="num">'+fmtEuro(f.montant)+'</td>'
+            + '<td><label class="check"><input type="checkbox" data-action="toggle-frais-paye" data-id="'+f.id+'" '+(f.statut==="paye"?'checked':'')+'> '+(recette?"Reçue":"Payé")+'</label></td>'
+            + '<td><button type="button" class="btn-danger-ghost" data-action="supprimer-frais" data-id="'+f.id+'">Supprimer</button></td></tr>'; }).join("")
+        + '</tbody></table></div>';
+    }
+    var aFaire = b.rappels.filter(function(r){ return !r.fait; }).length;
+    var rappels = b.rappels.length ? b.rappels.map(function(r){
+      return '<div class="inscrit-row"><label class="check"><input type="checkbox" data-action="toggle-rappel" data-id="'+esc(r.id)+'" '+(r.fait?'checked':'')+'> <span'+(r.fait?' style="text-decoration:line-through;color:var(--ink-faint)"':'')+'>'+esc(r.texte)+'</span></label>'
+        + '<button type="button" class="btn-danger-ghost" data-action="supprimer-rappel" data-id="'+esc(r.id)+'">Supprimer</button></div>'; }).join("")
+      : '<div class="meta">Aucun rappel.</div>';
+    zone.innerHTML = '<div class="section-title" style="margin-top:22px">💶 Finances de l\'évènement</div>'
+      + '<div class="stats" style="margin:8px 0">'
+      + tuile("Frais engagés", fmtEuro(b.engage)) + tuile("dont payés", fmtEuro(b.fraisPayes)) + tuile("reste à payer", fmtEuro(b.fraisAPayer))
+      + (b.budget !== null ? tuile("Budget prévu", fmtEuro(b.budget)) + tuile(b.ecartBudget < 0 ? "Dépassement du budget" : "Reste sur le budget", fmtEuro(Math.abs(b.ecartBudget)), b.ecartBudget<0?"solde-pos":"solde-neg") : '')
+      + tuile("Encaissé des inscrits", fmtEuro(b.regle)) + tuile("Reste à encaisser", fmtEuro(b.resteEncaisser))
+      + ((b.recettesRecues||b.recettesAttendues) ? tuile("Autres recettes reçues", fmtEuro(b.recettesRecues)) + tuile("Autres recettes attendues", fmtEuro(b.recettesAttendues)) : '')
+      + tuile("Résultat actuel", fmtEuro(b.resultat), b.resultat<0?"solde-pos":"solde-neg") + tuile("Résultat si tout encaissé", fmtEuro(b.previsionnel), b.previsionnel<0?"solde-pos":"solde-neg")
+      + tuile("Coût par personne", fmtEuro(b.coutParPersonne))
+      + '</div>'
+      + '<div class="section-title">Frais engagés (par date)</div>' + table(b.frais, false)
+      + '<div class="section-title" style="margin-top:14px">Autres recettes (subvention, buvette, sponsor…)</div>' + table(b.recettes, true)
+      + '<div class="section-title" style="margin-top:14px">🔔 Rappels'+(aFaire?' — '+aFaire+' à faire':'')+'</div>' + rappels
+      + '<div class="form-actions" style="margin-top:8px"><button type="button" class="btn btn-ghost btn-sm" data-action="imprimer-bilan" data-id="'+ev.id+'">🖨 Imprimer / PDF le bilan</button></div>';
+  }
+
+  function imprimerBilan(evId){
+    var ev = evenementById(evId); if(!ev || !peutGerer(ev) || !modeAvance()) return;
+    var b = bilanEvenement(ev);
+    var ins = inscriptionsDe(ev.id).slice().sort(function(x,y){
+      if(x.statut !== y.statut) return x.statut === "inscrit" ? -1 : 1;
+      return nomAdherent(adherentById(x.adherentId)).localeCompare(nomAdherent(adherentById(y.adherentId)), "fr"); });
+    function lignesFrais(liste, recette){ return liste.map(function(f){ return '<tr><td>'+fmtDateCourt(f.date)+'</td><td>'+esc(f.libelle)+(f.fournisseur?' ('+esc(f.fournisseur)+')':'')+(f.reference?' — réf. '+esc(f.reference):'')+'</td><td>'+esc(f.categorie||"")+'</td><td class="num">'+fmtEuro(f.montant)+'</td><td>'+(f.statut==="paye"?(recette?'Reçue':'Payé'):(recette?'Attendue':'À payer'))+'</td></tr>'; }).join(""); }
+    var fr = lignesFrais(b.frais, false), rc = lignesFrais(b.recettes, true);
+    var rap = b.rappels.filter(function(r){ return !r.fait; }).map(function(r){ return '<li>'+esc(r.texte)+'</li>'; }).join("");
+    var lg = ins.map(function(i){ var ep = etatPaiement(ev,i), act = i.statut === "inscrit";
+      return '<tr><td>'+esc(nomAdherent(adherentById(i.adherentId)))+(act?'':' (attente)')+'</td><td class="num">'+personnes(i)+'</td><td class="num">'+(act?fmtEuro(ep.du):'—')+'</td><td class="num">'+(act?fmtEuro(ep.regle):'—')+'</td><td class="num">'+(act?fmtEuro(ep.reste):'—')+'</td></tr>'; }).join("");
+    var d = new Date();
+    document.getElementById("print-root").innerHTML = '<h1>'+esc(NOM_ASSOCIATION)+' — Bilan de l\'évènement</h1>'
+      + '<div><strong>'+(ev.numero?numEv(ev)+' — ':'')+esc(ev.titre)+'</strong> · '+fmtDateCourt(ev.date)+' · '+esc(ev.lieu)+' · Organisateur : '+esc(organisateurDe(ev)||"—")+'</div>'
+      + '<div>Édité le '+d.toLocaleDateString("fr-FR")+' à '+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})+'</div>'
+      + '<h2>Synthèse</h2><table><tbody>'
+      + '<tr><td>Frais engagés</td><td class="num">'+fmtEuro(b.engage)+'</td><td>dont payés '+fmtEuro(b.fraisPayes)+' · reste à payer '+fmtEuro(b.fraisAPayer)+'</td></tr>'
+      + (b.budget !== null ? '<tr><td>Budget prévu</td><td class="num">'+fmtEuro(b.budget)+'</td><td>'+(b.ecartBudget<0?'dépassement de '+fmtEuro(-b.ecartBudget):'reste sur le budget : '+fmtEuro(b.ecartBudget))+'</td></tr>' : '')
+      + ((b.recettesRecues||b.recettesAttendues) ? '<tr><td>Autres recettes</td><td class="num">'+fmtEuro(b.recettesRecues)+'</td><td>reçues · attendues '+fmtEuro(b.recettesAttendues)+'</td></tr>' : '')
+      + '<tr><td>Dû par les inscrits</td><td class="num">'+fmtEuro(b.du)+'</td><td>'+b.personnes+' personne(s) inscrite(s)</td></tr>'
+      + '<tr><td>Encaissé des inscrits</td><td class="num">'+fmtEuro(b.regle)+'</td><td>reste à encaisser '+fmtEuro(b.resteEncaisser)+'</td></tr>'
+      + '<tr><td><strong>Résultat actuel</strong></td><td class="num"><strong>'+fmtEuro(b.resultat)+'</strong></td><td>encaissé (inscrits + autres recettes reçues) – engagé</td></tr>'
+      + '<tr><td>Résultat si tout est encaissé</td><td class="num">'+fmtEuro(b.previsionnel)+'</td><td>coût par personne : '+fmtEuro(b.coutParPersonne)+'</td></tr></tbody></table>'
+      + '<h2>Frais engagés (par date)</h2>' + (fr ? '<table><thead><tr><th>Date</th><th>Frais</th><th>Catégorie</th><th class="num">Montant</th><th>État</th></tr></thead><tbody>'+fr+'</tbody></table>' : '<div>Aucun frais saisi.</div>')
+      + (rc ? '<h2>Autres recettes</h2><table><thead><tr><th>Date</th><th>Recette</th><th>Catégorie</th><th class="num">Montant</th><th>État</th></tr></thead><tbody>'+rc+'</tbody></table>' : '')
+      + (rap ? '<h2>Rappels restant à traiter</h2><ul>'+rap+'</ul>' : '')
+      + '<h2>Inscrits</h2>' + (lg ? '<table><thead><tr><th>Nom</th><th class="num">Pers.</th><th class="num">Dû</th><th class="num">Versé</th><th class="num">Reste</th></tr></thead><tbody>'+lg+'</tbody></table>' : '<div>Aucun inscrit.</div>');
+    window.print();
+  }
+
+  // ---------- adhérents ----------
+  function renderAdherents(){
+    var r = adherentsRecherche.trim().toLowerCase();
+    var liste = state.adherents.filter(function(a){
+      return !r || [a.nom,a.prenom,a.email,a.tel,a.numero].join(" ").toLowerCase().indexOf(r) >= 0;
+    }).sort(function(a,b){
+      if(adherentsTri === "prenom") return (a.prenom||"").localeCompare(b.prenom||"","fr");
+      return (a.nom||"").localeCompare(b.nom||"","fr") || (a.prenom||"").localeCompare(b.prenom||"","fr");
+    });
+    var form = adherentFormOpen ? '<form class="form" id="form-adherent"><div class="field-row">'
+      + champ("Prénom","prenom","text","",true) + champ("Nom","nom","text","",true) + champ("Email","email","email","",true)
+      + champ("Téléphone","tel","tel","",false) + champ("N° d'adhérent (facultatif)","numero","text","",false)
+      + '</div><div class="form-actions"><button type="submit" class="btn btn-primary" '+(authReady?"":"disabled")+'>Ajouter l\'adhérent</button>'
+      + '<button type="button" class="btn btn-ghost" data-action="cancel-adherent">Annuler</button>'
+      + (adherentErreur ? '<span class="error-text">'+esc(adherentErreur)+'</span>' : '') + '</div></form>' : '';
+    var lignes = liste.map(function(a){
+      var nbIns = state.inscriptions.filter(function(i){ return i.adherentId === a.id; }).length;
+      return '<tr><td>'+esc(a.nom)+(a.actif?'':' <span class="badge low">Inactif</span>')+'</td><td>'+esc(a.prenom)+'</td><td>'+esc(a.email)+'</td><td>'+esc(a.tel||"—")+'</td>'
+        + '<td>'+esc(a.numero||"—")+'</td><td class="num">'+nbIns+'</td><td style="white-space:nowrap">'
+        + '<button class="btn btn-ghost btn-sm" data-action="ouvrir-compte" data-id="'+a.id+'">📒 Compte</button> '
+        + '<button class="btn btn-ghost btn-sm" data-action="toggle-actif" data-id="'+a.id+'">'+(a.actif?'Marquer inactif':'Marquer actif')+'</button>'
+        + '<button class="btn-danger-ghost" data-action="delete-adherent" data-id="'+a.id+'">Supprimer</button></td></tr>';
+    }).join("");
+    document.getElementById("panel-adherents").innerHTML =
+      '<div class="toolbar"><div><h2>Adhérents</h2><div class="toolbar-meta">'+state.adherents.length+' fiche(s)</div></div><button class="btn btn-primary" data-action="open-adherent">+ Ajouter un adhérent</button></div>'
+      + form + '<div class="field" style="max-width:420px"><label for="adh-recherche">Recherche</label><input type="search" id="adh-recherche" value="'+esc(adherentsRecherche)+'" placeholder="Nom, email, téléphone, n°…"></div>'
+      + (liste.length ? '<div class="table-scroll"><table class="tbl"><thead><tr>'
+        + '<th><button class="th-tri'+(adherentsTri==="nom"?" active":"")+'" data-action="tri-adherents" data-tri="nom">Nom</button></th>'
+        + '<th><button class="th-tri'+(adherentsTri==="prenom"?" active":"")+'" data-action="tri-adherents" data-tri="prenom">Prénom</button></th>'
+        + '<th>Email</th><th>Téléphone</th><th>N°</th><th class="num">Inscriptions</th><th></th></tr></thead><tbody>'+lignes+'</tbody></table></div>'
+        : '<div class="empty-state">'+(state.adherents.length?'Aucune fiche ne correspond.':'Aucun adhérent enregistré. Ajoutez-les un par un : ils pourront ensuite s\'identifier et s\'inscrire.')+'</div>');
+  }
+
+  // ---------- récapitulatif Directeur : où en est-on, évènement par évènement ----------
+  function renderRecap(){
+    var liste = state.evenements.filter(function(e){ return !recapAvenirSeulement || !evenementPasse(e); })
+      .sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
+    var blocs = liste.map(function(ev){
+      var ins = inscriptionsDe(ev.id).slice().sort(function(a,b){
+        if(a.statut !== b.statut) return a.statut === "inscrit" ? -1 : 1;
+        return nomAdherent(adherentById(a.adherentId)).localeCompare(nomAdherent(adherentById(b.adherentId)), "fr");
+      });
+      var tarif = (ev.tarif||0) > 0, totDu = 0, totRegle = 0, totReste = 0;
+      var lignes = ins.map(function(i){
+        var ep = etatPaiement(ev, i), actif = i.statut === "inscrit";
+        if(actif){ totDu += ep.du; totRegle += ep.regle; totReste += ep.reste; }
+        return '<tr><td>'+esc(nomAdherent(adherentById(i.adherentId)))+(actif?'':' <span class="badge warm">Attente</span>')+'</td>'
+          + '<td class="num">'+personnes(i)+'</td>'
+          + (tarif ? '<td class="num">'+(actif?fmtEuro(ep.du):'—')+'</td><td class="num">'+(actif?fmtEuro(ep.regle):'—')+'</td>'
+            + '<td class="num">'+(actif ? (ep.reste>0 ? '<span class="solde-pos">'+fmtEuro(ep.reste)+'</span>' : (ep.reste<0 ? '<span class="solde-neg">'+fmtEuro(ep.reste)+'</span>' : '<span class="badge ok">Soldé</span>')) : '—')+'</td>' : '')
+          + '<td><button class="btn btn-ghost btn-sm" data-action="ouvrir-compte" data-id="'+i.adherentId+'" data-ev="'+ev.id+'">💶 Versement / compte</button></td></tr>';
+      }).join("");
+      var bil = bilanEvenement(ev);
+      var att = enAttente(ev).reduce(function(sm,i){ return sm + personnes(i); }, 0);
+      return '<div class="card" style="margin-bottom:16px"><div class="card-title">'+(ev.numero?'<span class="meta">'+numEv(ev)+'</span> ':'')+esc(ev.titre)+'</div>'
+        + '<div class="meta">'+fmtDateCourt(ev.date)+' · '+esc(ev.lieu)+' · Organisé par '+esc(organisateurDe(ev)||"—")+' · '+esc(ev.statut)+'</div>'
+        + '<div class="meta"><strong>'+placesPrises(ev)+' / '+ev.placesTotal+'</strong> places prises'+(att?' · '+att+' en attente':'')
+        + (tarif ? ' · À encaisser : <strong>'+fmtEuro(totDu)+'</strong> · Reçu : <strong>'+fmtEuro(totRegle)+'</strong> · Reste : <strong class="'+(totReste>0?'solde-pos':'')+'">'+fmtEuro(totReste)+'</strong>' : ' · Gratuit')+'</div>'
+        + '<div class="meta">Frais engagés : <strong>'+fmtEuro(bil.engage)+'</strong> (payés '+fmtEuro(bil.fraisPayes)+')'+(bil.budget!==null?' sur un budget de '+fmtEuro(bil.budget):'')+(bil.recettesRecues?' · Autres recettes reçues : <strong>'+fmtEuro(bil.recettesRecues)+'</strong>':'')+' · Résultat actuel : <strong class="'+(bil.resultat<0?'solde-pos':'solde-neg')+'">'+fmtEuro(bil.resultat)+'</strong></div>'
+        + (ins.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th>Inscrit</th><th class="num">Pers.</th>'
+          + (tarif ? '<th class="num">Dû</th><th class="num">Réglé</th><th class="num">Reste (évènement)</th>' : '')
+          + '<th></th></tr></thead><tbody>'+lignes+'</tbody></table></div>'
+          : '<div class="meta">Aucun inscrit.</div>')
+        + '</div>';
+    }).join("");
+    document.getElementById("panel-recap").innerHTML = '<div class="toolbar"><h2>Récapitulatif par évènement</h2></div>'
+      + '<label class="check field" style="flex-direction:row;align-items:center"><input type="checkbox" id="recap-avenir" '+(recapAvenirSeulement?'checked':'')+'> À venir seulement</label>'
+      + '<div class="form-hint" style="margin-bottom:10px">Chiffres propres à chaque évènement. « Reste » = ce qui manque encore (rouge) ; en vert : trop-perçu à rembourser. Le bouton ouvre le compte de l\'inscrit pour noter un versement, même partiel.</div>'
+      + (blocs || '<div class="empty-state">Aucun évènement.</div>');
+  }
+
+  // ---------- compte d'un adhérent ----------
+  function fmtTs(ts){ try{ return ts.toDate().toLocaleString("fr-FR"); }catch(e){ return "…"; } }
+  function renderCompte(){
+    var root = document.getElementById("compte-root");
+    if(!compteAdherentId){ root.innerHTML = ""; return; }
+    var a = adherentById(compteAdherentId);
+    if(!a && role !== "public"){ compteAdherentId = null; root.innerHTML = ""; return; }
+    var gestion = role !== "public";
+    var evPossibles = [];
+    if(gestion){
+      var vus = {};
+      var ids = state.mouvements.filter(function(m){ return m.adherentId === compteAdherentId; }).map(function(m){ return m.evenementId; })
+        .concat(state.inscriptions.filter(function(i){ return i.adherentId === compteAdherentId; }).map(function(i){ return i.evenementId; }));
+      ids.forEach(function(eid){
+        var ev = evenementById(eid);
+        if(ev && peutGerer(ev) && !vus[ev.id]){ vus[ev.id] = 1; evPossibles.push(ev); }
+      });
+    }
+    var form = (gestion && evPossibles.length)
+      ? '<form id="form-reglement" class="form" style="margin-top:14px"><div class="section-title">Noter un versement (même partiel) ou un remboursement</div><div class="field-row">'
+        + '<div class="field"><label for="rg-ev">Évènement</label><select id="rg-ev" name="ev">'+evPossibles.map(function(ev){ return '<option value="'+ev.id+'"'+(ev.id===compteEvenementId?' selected':'')+'>'+esc((ev.numero?numEv(ev)+" — ":"")+ev.titre)+'</option>'; }).join("")+'</select></div>'
+        + '<div class="field"><label for="rg-type">Opération</label><select id="rg-type" name="type"><option value="paiement">Règlement reçu</option><option value="remboursement">Remboursement effectué</option></select></div>'
+        + '<div class="field"><label for="rg-montant">Montant (€)</label><input id="rg-montant" name="montant" type="number" min="0.01" step="0.01" required></div>'
+        + '</div>' + (compteErreur ? '<div class="error-text">'+esc(compteErreur)+'</div>' : '')
+        + '<div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Enregistrer</button></div></form>'
+      : '';
+    root.innerHTML = '<div class="modal-backdrop" data-action="close-compte"><div class="modal-box">'
+      + '<div class="modal-head"><h3>Compte de '+esc(a ? nomAdherent(a) : "l'adhérent")+'</h3><button type="button" class="modal-close" data-action="fermer-compte" aria-label="Fermer">✕</button></div>'
+      + '<div class="modal-body"><div id="compte-zone"></div>' + form
+      + '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="fermer-compte">Fermer</button></div></div></div></div>';
+    renderCompteZone();
+  }
+  // Tableau des mouvements : re-rendu seul pour ne pas effacer la saisie du formulaire de règlement.
+  function renderCompteZone(){
+    var zone = document.getElementById("compte-zone");
+    if(!zone || !compteAdherentId) return;
+    var ms = state.mouvements.filter(function(m){ return m.adherentId === compteAdherentId; })
+      .sort(function(x,y){ return msDate(x) - msDate(y); });
+    var cumul = 0;
+    // Le solde cumulé se calcule du plus ancien au plus récent, puis la liste s'affiche du plus récent au plus ancien.
+    var lignes = ms.map(function(m){
+      cumul = Math.round((cumul + (m.montant||0))*100)/100;
+      return '<tr><td>'+esc(fmtTs(m.date))+'</td><td class="num">'+(m.evenementNumero||"—")+'</td><td>'+esc(m.evenementTitre||"")+'</td><td>'+esc(m.libelle||m.type)+'</td>'
+        + '<td class="num">'+(m.personnes ? (m.personnes>0?"+":"")+m.personnes : "")+'</td>'
+        + '<td class="num">'+(m.montant ? (m.montant>0?"+":"")+fmtEuro(m.montant) : "—")+'</td><td class="num">'+fmtEuro(cumul)+'</td></tr>';
+    }).reverse().join("");
+    var solde = soldeAdherent(compteAdherentId);
+    var parEv = {}, ordreEv = [];
+    state.mouvements.filter(function(m){ return m.adherentId === compteAdherentId; }).forEach(function(m){
+      if(!parEv[m.evenementId]){ parEv[m.evenementId] = { titre: m.evenementTitre, num: m.evenementNumero, du: 0, regle: 0 }; ordreEv.push(m.evenementId); }
+      if(TYPES_REGLEMENT.indexOf(m.type) >= 0) parEv[m.evenementId].regle -= (m.montant||0); else parEv[m.evenementId].du += (m.montant||0);
+    });
+    var synthese = ordreEv.length ? '<div class="table-scroll" style="margin-bottom:12px"><table class="tbl"><thead><tr><th class="num">N°</th><th>Par évènement</th><th class="num">Dû</th><th class="num">Versé</th><th class="num">Reste</th></tr></thead><tbody>'
+      + ordreEv.map(function(k){ var x = parEv[k], r = Math.round((x.du - x.regle)*100)/100;
+        return '<tr><td class="num">'+(x.num||"—")+'</td><td>'+esc(x.titre||"")+'</td><td class="num">'+fmtEuro(x.du)+'</td><td class="num">'+fmtEuro(x.regle)+'</td><td class="num"><span class="'+(r>0?'solde-pos':(r<0?'solde-neg':''))+'">'+fmtEuro(r)+'</span></td></tr>'; }).join("")
+      + '</tbody></table></div>' : '';
+    zone.innerHTML = synthese + '<div class="card" style="margin-bottom:12px"><div>Solde : <span class="'+(solde>0?'solde-pos':(solde<0?'solde-neg':''))+'">'+fmtEuro(Math.abs(solde))+'</span> '
+      + (solde>0 ? '— reste à régler par l\'adhérent' : (solde<0 ? '— à rembourser à l\'adhérent' : '— compte soldé'))+'</div></div>'
+      + (ms.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th>Date</th><th class="num">N° évènement</th><th>Évènement</th><th>Mouvement</th><th class="num">Pers.</th><th class="num">Montant</th><th class="num">Solde</th></tr></thead><tbody>'+lignes+'</tbody></table></div>'
+        + '<div class="form-hint" style="margin-top:6px">Montant positif = somme due ; négatif = somme reçue ou retirée. Les inscriptions antérieures à la mise en place du compte n\'y figurent pas tant qu\'elles n\'ont pas été modifiées.</div>'
+        : '<div class="empty-state">Aucun mouvement pour le moment.</div>');
+  }
+
+  // ---------- historique ----------
+  var ACTIONS = { budget:"Budget modifié", frais_ajout:"Frais ajouté", frais_suppression:"Frais supprimé", modif_accompagnants:"Accompagnants modifiés", reglement:"Règlement / remboursement enregistré", annulation_reglement:"Règlement annulé", creation_evenement:"Évènement créé", modification_evenement:"Évènement modifié", suppression_evenement:"Évènement supprimé",
+    inscription_publique:"Inscription (adhérent)", inscription_gestion:"Inscription (gestion)", suppression_inscription:"Inscription retirée",
+    promotion_attente:"Passé de l'attente à inscrit", demande_annulation:"Demande d'annulation", creation_adherent:"Adhérent ajouté",
+    suppression_adherent:"Adhérent supprimé", ajout_equipe:"Compte gestion ajouté", categories:"Catégories modifiées" };
+  function renderHistorique(){
+    var r = historiqueRecherche.trim().toLowerCase();
+    var rows = state.historique.filter(function(h){
+      return !r || ((ACTIONS[h.action]||h.action)+" "+(h.cible||"")+" "+(h.parNom||"")).toLowerCase().indexOf(r) >= 0;
+    }).sort(function(a,b){ return (b.date&&b.date.toMillis?b.date.toMillis():0) - (a.date&&a.date.toMillis?a.date.toMillis():0); }).slice(0,500);
+    function fd(ts){ try{ return ts.toDate().toLocaleString("fr-FR"); }catch(e){ return ""; } }
+    document.getElementById("panel-historique").innerHTML = '<div class="toolbar"><h2>Historique</h2><div class="toolbar-meta">500 dernières actions</div></div>'
+      + '<div class="field" style="max-width:420px"><label for="hist-recherche">Recherche</label><input type="search" id="hist-recherche" value="'+esc(historiqueRecherche)+'"></div>'
+      + (rows.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th>Date</th><th>Action</th><th>Concerne</th><th>Par</th></tr></thead><tbody>'
+        + rows.map(function(h){ return '<tr><td>'+fd(h.date)+'</td><td>'+esc(ACTIONS[h.action]||h.action)+'</td><td>'+esc(h.cible||"")+'</td><td>'+esc(h.parNom||"")+' ('+(h.parRole==="directeur"?"Directeur":(h.parRole==="public"?"Adhérent":"Gestionnaire"))+')</td></tr>'; }).join("")
+        + '</tbody></table></div>' : '<div class="empty-state">Aucune action enregistrée.</div>');
+  }
+
+  // ---------- paramètres (Directeur) ----------
+  function renderParametres(){
+    var cats = state.categories.map(function(c){ return '<div class="list-row"><span>'+esc(c)+'</span><button class="btn-danger-ghost" data-action="delete-categorie" data-cat="'+esc(c)+'">Retirer</button></div>'; }).join("");
+    var equipe = state.gestionnaires.map(function(g){
+      return '<div class="list-row"><div><strong>'+esc(g.nom)+'</strong><div class="meta">'+esc(g.email||"")+' · '+(g.actif?'Actif':'Inactif')+'</div></div>'
+        + '<div><span class="badge '+(g.role==="directeur"?'warm':'')+'">'+(g.role==="directeur"?"Directeur":"Gestionnaire")+'</span> '
+        + (g.role!=="directeur" ? '<button class="btn btn-ghost btn-sm" data-action="toggle-gestionnaire" data-id="'+g.id+'">'+(g.actif?"Désactiver":"Réactiver")+'</button>' : '')+'</div></div>';
+    }).join("");
+    var formEquipe = equipeFormOpen ? '<form class="form" id="form-equipe"><div class="field-row">'
+      + champ("Nom complet","nom","text","",true) + champ("Email réel (sert à récupérer le code)","email","email","",true)
+      + champ("Code initial (6 car. min.)","code","text","",true,'minlength="6" ')
+      + '<div class="field"><label for="f-role">Rôle</label><select id="f-role" name="role"><option value="gestionnaire">Gestionnaire</option><option value="directeur">Directeur (tous les droits)</option></select></div>'
+      + '</div><div class="form-actions"><button type="submit" class="btn btn-primary">Ajouter</button><button type="button" class="btn btn-ghost" data-action="cancel-equipe">Annuler</button>'
+      + (equipeErreur ? '<span class="error-text">'+esc(equipeErreur)+'</span>' : '') + '</div></form>' : '';
+    document.getElementById("panel-parametres").innerHTML =
+      '<div class="toolbar"><h2>Paramètres</h2></div>'
+      + '<h3 style="margin:0 0 8px">Catégories d\'évènements</h3>'
+      + '<form class="form" id="form-categorie"><div class="field-row">'+champ("Nouvelle catégorie","nom","text","",true)+'</div><div class="form-actions"><button type="submit" class="btn btn-primary">Ajouter</button></div></form>'
+      + cats + '<div class="form-hint" style="margin:8px 0 26px">Retirer une catégorie ne modifie pas les évènements qui l\'utilisent déjà.</div>'
+      + '<div class="toolbar"><h3>Équipe de gestion</h3><button class="btn btn-primary" data-action="open-equipe">+ Ajouter</button></div>'
+      + formEquipe + (equipe || '<div class="empty-state">Aucun compte.</div>')
+      + '<h3 style="margin:26px 0 8px">Données</h3><div class="card" style="max-width:520px"><div class="meta">Télécharge une copie horodatée des adhérents, évènements, inscriptions et de l\'historique.</div>'
+      + '<div><button class="btn btn-primary" data-action="export-json">Exporter (JSON)</button></div></div>';
+  }
+
+  // ---------- rendu global ----------
+  function updateTabs(){
+    var gestion = role !== "public";
+    document.getElementById("tabs-bar").hidden = !gestion;
+    document.getElementById("tab-parametres").hidden = role !== "directeur";
+    document.getElementById("tab-recap").hidden = !(role === "directeur" && avance);
+    if(!(role === "directeur" && avance) && currentTab === "recap") switchTab("evenements");
+    if(!gestion && currentTab !== "evenements") switchTab("evenements");
+    if(role !== "directeur" && currentTab === "parametres") switchTab("evenements");
+  }
+  function switchTab(name){
+    currentTab = name;
+    document.querySelectorAll(".tab").forEach(function(b){ b.setAttribute("aria-selected", b.getAttribute("data-tab")===name?"true":"false"); });
+    ["evenements","adherents","recap","historique","parametres"].forEach(function(t){ document.getElementById("panel-"+t).hidden = (t !== name); });
+  }
+  function renderAll(){
+    updateTabs(); renderAdminRow(); renderStats();
+    // Ne pas écraser un champ de recherche en cours de frappe : on re-rend le panneau actif seulement s'il n'a pas le focus dans un champ.
+    var actif = document.activeElement;
+    var enSaisie = actif && actif.closest && actif.closest(".panel") && /INPUT|TEXTAREA|SELECT/.test(actif.tagName) && actif.type !== "checkbox";
+    if(!enSaisie){
+      if(currentTab==="evenements") renderEvenements();
+      if(currentTab==="adherents" && role!=="public") renderAdherents();
+      if(currentTab==="recap" && role==="directeur" && avance) renderRecap();
+      if(currentTab==="historique" && role!=="public") renderHistorique();
+      if(currentTab==="parametres" && role==="directeur") renderParametres();
+    }
+    renderInscritsZone();
+    if(!compteAdherentId) document.getElementById("compte-root").innerHTML = "";
+    renderCompteZone(); renderFinancesZone();
+    backfillNumeros();
+  }
+
+  // Numérote les évènements créés avant l'introduction des numéros (une seule fois, par le Directeur).
+  function backfillNumeros(){
+    if(role !== "directeur" || backfillEnCours) return;
+    var sans = state.evenements.filter(function(e){ return !e.numero; });
+    if(!sans.length) return;
+    backfillEnCours = true;
+    var max = state.evenements.reduce(function(m,e){ return Math.max(m, e.numero||0); }, 0);
+    sans.sort(function(x,y){ var a = x.creeLe && x.creeLe.toMillis ? x.creeLe.toMillis() : 0, b = y.creeLe && y.creeLe.toMillis ? y.creeLe.toMillis() : 0; return a - b || (x.date||"").localeCompare(y.date||""); });
+    var batch = writeBatch(db);
+    sans.forEach(function(e){ max += 1; batch.update(doc(db,"evenements",e.id), { numero: max }); });
+    batch.commit().catch(function(err){ console.error("numérotation:", err); });
+  }
+
+  document.querySelectorAll(".tab").forEach(function(b){ b.addEventListener("click", function(){ switchTab(b.getAttribute("data-tab")); renderAll(); }); });
+
+  // ---------- actions ----------
+  function fermerModal(){ modalOuverte = false; modalEvenementId = null; modalErreur = ""; renderModal(); }
+
+  document.addEventListener("click", function(e){
+    var el = e.target.closest("[data-action]");
+    if(!el) return;
+    var a = el.getAttribute("data-action"), id = el.getAttribute("data-id");
+    if(a==="open-login"){ loginFormOpen = true; loginError = ""; loginInfo = ""; renderAdminRow(); }
+    else if(a==="cancel-login"){ loginFormOpen = false; renderAdminRow(); }
+    else if(a==="logout"){ detachRole(); detachPublic(); signOut(auth).then(function(){ return signInAnonymously(auth); }).catch(reportError); }
+    else if(a==="mdp-oublie"){
+      var f = document.getElementById("form-login"); var em = f && f.email.value.trim();
+      if(!em){ loginError = "Indiquez votre email d'abord."; renderAdminRow(); return; }
+      sendPasswordResetEmail(auth, em).catch(function(){}).then(function(){ loginError = ""; loginInfo = "Email envoyé si ce compte existe."; renderAdminRow(); });
+    }
+    else if(a==="open-identite"){ identiteFormOpen = true; renderEvenements(); }
+    else if(a==="cancel-identite"){ identiteFormOpen = false; identiteError = ""; renderEvenements(); }
+    else if(a==="changer-identite"){ moiAdherentId = null; try{ localStorage.removeItem("evt-moi"); }catch(x){} if(unsubMoiAdherent){ unsubMoiAdherent(); unsubMoiAdherent = null; } if(unsubMoiMouv){ unsubMoiMouv(); unsubMoiMouv = null; } state.adherents = []; state.mouvements = []; compteAdherentId = null; renderAll(); }
+    else if(a==="inscrire-moi"){
+      var champAcc = document.getElementById("acc-"+id);
+      var acc = Math.max(0, Math.min(10, parseInt(champAcc && champAcc.value,10) || 0));
+      inscrire(id, moiAdherentId, acc, "public");
+    }
+    else if(a==="ouvrir-compte"){ compteAdherentId = id; compteEvenementId = el.getAttribute("data-ev") || null; compteErreur = ""; renderCompte(); }
+    else if(a==="fermer-compte"){ compteAdherentId = null; compteErreur = ""; renderCompte(); }
+    else if(a==="close-compte"){ if(e.target === el){ compteAdherentId = null; compteErreur = ""; renderCompte(); } }
+    else if(a==="toggle-avance"){
+      avance = !avance; try{ localStorage.setItem("evt-avance", avance ? "1" : "0"); }catch(x){}
+      renderAll(); if(modalOuverte) renderModal();
+    }
+    else if(a==="imprimer-bilan"){ imprimerBilan(id); }
+    else if(a==="rappels-types"){
+      var evT = modalEvenementId ? evenementById(modalEvenementId) : null; if(!evT || !peutGerer(evT)) return;
+      var exist = ((ficheDe(evT.id)||{}).rappels || []), textes = exist.map(function(r){ return r.texte; });
+      var ajouts = RAPPELS_TYPES.filter(function(t){ return textes.indexOf(t) < 0; }).map(function(t,k){ return { id: "r"+Date.now()+"-"+k, texte: t, fait: false }; });
+      if(ajouts.length) ecrireRappels(evT, exist.concat(ajouts)).catch(reportError);
+    }
+    else if(a==="supprimer-rappel"){
+      var evX = modalEvenementId ? evenementById(modalEvenementId) : null; if(!evX || !peutGerer(evX)) return;
+      ecrireRappels(evX, ((ficheDe(evX.id)||{}).rappels || []).filter(function(r){ return r.id !== id; })).catch(reportError);
+    }
+    else if(a==="supprimer-frais"){
+      var fS = state.frais.find(function(x){ return x.id === id; }); if(!fS) return;
+      var evS = evenementById(fS.evenementId);
+      if(!confirm("Supprimer le frais « "+fS.libelle+" » ("+fmtEuro(fS.montant)+") ?")) return;
+      deleteDoc(doc(db,"frais",id)).then(function(){ logHistorique("frais_suppression", (evS?evS.titre:"")+" — "+fS.libelle+" "+fmtEuro(fS.montant)); }).catch(reportError);
+    }
+    else if(a==="modifier-acc"){ modifierAccompagnants(id, parseInt(el.getAttribute("data-delta"),10) || 0); }
+    else if(a==="demander-annulation"){
+      var ins = state.inscriptions.find(function(i){ return i.id === id; });
+      var ev0 = ins ? evenementById(ins.evenementId) : null, ad0 = ins ? adherentById(ins.adherentId) : null;
+      updateDoc(doc(db,"inscriptions",id), {demandeAnnulation:true}).then(function(){
+        logHistorique("demande_annulation", ev0 ? ev0.titre : "", ad0 ? nomAdherent(ad0) : "Adhérent", "public");
+      }).catch(reportError);
+    }
+    else if(a==="open-evenement"){ modalOuverte = true; modalEvenementId = null; modalErreur = ""; renderModal(); }
+    else if(a==="edit-evenement"){ modalOuverte = true; modalEvenementId = id; modalErreur = ""; renderModal(); }
+    else if(a==="cancel-modal"){ fermerModal(); }
+    else if(a==="close-modal"){ if(e.target === el) fermerModal(); }
+    else if(a==="delete-evenement"){
+      var evD = evenementById(id);
+      if(!confirm("Supprimer définitivement « "+(evD?evD.titre:"")+" » et toutes ses inscriptions ?")) return;
+      Promise.all(inscriptionsDe(id).map(function(i){ return deleteDoc(doc(db,"inscriptions",i.id)); }).concat(fraisDe(id).map(function(f){ return deleteDoc(doc(db,"frais",f.id)); })).concat(ficheDe(id) ? [deleteDoc(doc(db,"fiches",id))] : []))
+        .then(function(){ return deleteDoc(doc(db,"evenements",id)); })
+        .then(function(){ logHistorique("suppression_evenement", evD?evD.titre:""); fermerModal(); }).catch(reportError);
+    }
+    else if(a==="inscrire-adherent"){
+      var s = document.getElementById("sel-adherent"), c = document.getElementById("sel-acc");
+      if(s && s.value) inscrire(id, s.value, Math.max(0, Math.min(10, parseInt(c&&c.value,10)||0)), "gestion");
+    }
+    else if(a==="promouvoir"){
+      var i1 = state.inscriptions.find(function(x){ return x.id === id; }); var e1 = i1 && evenementById(i1.evenementId);
+      if(i1 && e1 && personnes(i1) > placesRestantes(e1) && !confirm("Il ne reste pas assez de places : l'évènement sera en surréservation. Continuer ?")) return;
+      if(!i1 || !e1) return;
+      var b1 = writeBatch(db);
+      b1.update(doc(db,"inscriptions",id), {statut:"inscrit"});
+      ajouterMouvement(b1, e1, i1.adherentId, "promotion", personnes(i1), montantDu(e1,i1), "gestion");
+      b1.commit().then(function(){ logHistorique("promotion_attente", e1.titre+" — "+nomAdherent(adherentById(i1.adherentId))); }).catch(reportError);
+    }
+    else if(a==="ignorer-annulation"){ updateDoc(doc(db,"inscriptions",id), {demandeAnnulation:false}).catch(reportError); }
+    else if(a==="retirer"){
+      var i2 = state.inscriptions.find(function(x){ return x.id === id; }); var e2 = i2 && evenementById(i2.evenementId);
+      if(!confirm("Retirer l'inscription de "+nomAdherent(i2?adherentById(i2.adherentId):null)+" ?")) return;
+      if(!i2 || !e2) return;
+      var b2 = writeBatch(db);
+      b2.delete(doc(db,"inscriptions",id));
+      var msI = mouvementsDe(i2.adherentId, e2.id);
+      var chargesNettes = msI.filter(function(m){ return TYPES_REGLEMENT.indexOf(m.type) < 0; }).reduce(function(sm,m){ return sm + (m.montant||0); }, 0);
+      if(msI.length) ajouterMouvement(b2, e2, i2.adherentId, "annulation", -personnes(i2), -chargesNettes, "gestion");
+      b2.commit().then(function(){ logHistorique("suppression_inscription", e2.titre+" — "+nomAdherent(adherentById(i2.adherentId))); }).catch(reportError);
+    }
+    else if(a==="open-adherent"){ adherentFormOpen = true; adherentErreur = ""; renderAdherents(); }
+    else if(a==="cancel-adherent"){ adherentFormOpen = false; renderAdherents(); }
+    else if(a==="tri-adherents"){ adherentsTri = el.getAttribute("data-tri"); renderAdherents(); }
+    else if(a==="toggle-actif"){ var ad = adherentById(id); if(ad) updateDoc(doc(db,"adherents",id), {actif: !ad.actif}).catch(reportError); }
+    else if(a==="delete-adherent"){
+      var adD = adherentById(id);
+      if(!confirm("Supprimer définitivement "+nomAdherent(adD)+" et ses inscriptions ?")) return;
+      Promise.all(state.inscriptions.filter(function(i){ return i.adherentId === id; }).map(function(i){ return deleteDoc(doc(db,"inscriptions",i.id)); }))
+        .then(function(){ return deleteDoc(doc(db,"adherents",id)); })
+        .then(function(){ logHistorique("suppression_adherent", nomAdherent(adD)); }).catch(reportError);
+    }
+    else if(a==="delete-categorie"){
+      var cat = el.getAttribute("data-cat");
+      if(!confirm("Retirer la catégorie « "+cat+" » de la liste proposée ?")) return;
+      setDoc(doc(db,"parametres","config"), {categories: state.categories.filter(function(c){ return c !== cat; })}, {merge:true}).then(function(){ logHistorique("categories","Retrait : "+cat); }).catch(reportError);
+    }
+    else if(a==="open-equipe"){ equipeFormOpen = true; equipeErreur = ""; renderParametres(); }
+    else if(a==="cancel-equipe"){ equipeFormOpen = false; renderParametres(); }
+    else if(a==="toggle-gestionnaire"){ var g = state.gestionnaires.find(function(x){ return x.id === id; }); if(g) updateDoc(doc(db,"gestionnaires",id), {actif: !g.actif}).catch(reportError); }
+    else if(a==="export-json"){
+      var data = { exporteLe: new Date().toISOString(), categories: state.categories, adherents: state.adherents, evenements: state.evenements, inscriptions: state.inscriptions, mouvements: state.mouvements, frais: state.frais, fiches: state.fiches, historique: state.historique };
+      var url = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], {type:"application/json"}));
+      var d = new Date(), p = function(n){ return String(n).padStart(2,"0"); };
+      var lien = document.createElement("a"); lien.href = url;
+      lien.download = "evenements-export-"+d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"-"+p(d.getHours())+"h"+p(d.getMinutes())+".json";
+      document.body.appendChild(lien); lien.click(); document.body.removeChild(lien); URL.revokeObjectURL(url);
+    }
+  });
+
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape" && modalOuverte) fermerModal(); });
+
+  document.addEventListener("input", function(e){
+    var map = { "ev-recherche":["evenementsRecherche",renderEvenements], "adh-recherche":["adherentsRecherche",renderAdherents], "hist-recherche":["historiqueRecherche",renderHistorique] };
+    var m = map[e.target.id]; if(!m) return;
+    var v = e.target.value, pos = e.target.selectionStart;
+    if(e.target.id==="ev-recherche") evenementsRecherche = v; else if(e.target.id==="adh-recherche") adherentsRecherche = v; else historiqueRecherche = v;
+    m[1]();
+    var n = document.getElementById(e.target.id); if(n){ n.focus(); n.setSelectionRange(pos,pos); }
+  });
+
+  document.addEventListener("change", function(e){
+    var t = e.target;
+    if(t.id === "ev-statut"){ evenementsFiltreStatut = t.value; renderEvenements(); }
+    else if(t.matches('[data-action="toggle-frais-paye"]')){
+      updateDoc(doc(db,"frais",t.getAttribute("data-id")), {statut: t.checked ? "paye" : "a_payer"}).catch(reportError);
+    }
+    else if(t.matches('[data-action="toggle-rappel"]')){
+      var evY = modalEvenementId ? evenementById(modalEvenementId) : null; if(!evY || !peutGerer(evY)) return;
+      var rid = t.getAttribute("data-id"), coche = t.checked;
+      ecrireRappels(evY, ((ficheDe(evY.id)||{}).rappels || []).map(function(r){ return r.id === rid ? Object.assign({}, r, {fait: coche}) : r; })).catch(reportError);
+    }
+    else if(t.id === "recap-avenir"){ recapAvenirSeulement = t.checked; renderRecap(); }
+    else if(t.id === "ev-avenir"){ evenementsAvenirSeulement = t.checked; renderEvenements(); }
+    else if(t.matches('[data-action="toggle-present"]')){ updateDoc(doc(db,"inscriptions",t.getAttribute("data-id")), {present: t.checked}).catch(reportError); }
+    else if(t.matches('[data-action="toggle-paye"]')){ basculerPaiement(t.getAttribute("data-id"), t.checked); }
+  });
+
+  // Inscription (adhérent ou gestion) : la place est attribuée selon l'état connu à cet instant.
+  // Limite connue : sans transaction côté serveur, deux inscriptions simultanées sur la toute dernière
+  // place peuvent toutes deux être acceptées ; un gestionnaire peut corriger dans la fiche de l'évènement.
+  function ecrireRappels(ev, liste){
+    return setDoc(doc(db,"fiches",ev.id), { evenementId: ev.id, organisateurUid: ev.organisateurUid || "", rappels: liste }, {merge:true});
+  }
+
+  function inscrire(evId, adhId, acc, origine){
+    var ev = evenementById(evId), adh = adhId ? adherentById(adhId) : null;
+    if(!ev || !adh) return;
+    if(origine === "public" && (ev.statut !== "Ouvert" || evenementPasse(ev) || !adh.actif)) return;
+    if(inscriptionsDe(evId).some(function(i){ return i.adherentId === adhId; })){ alert("Déjà inscrit à cet évènement."); return; }
+    var statut = (1 + acc) <= placesRestantes(ev) ? "inscrit" : "attente";
+    var batch = writeBatch(db);
+    batch.set(doc(collection(db,"inscriptions")), { evenementId: evId, adherentId: adhId, nbAccompagnants: acc, statut: statut,
+      present: false, paye: false, demandeAnnulation: false, creeLe: serverTimestamp() });
+    ajouterMouvement(batch, ev, adhId, statut === "inscrit" ? "inscription" : "attente", 1 + acc, statut === "inscrit" ? (ev.tarif||0) * (1 + acc) : 0, origine);
+    batch.commit().then(function(){
+      logHistorique(origine==="public" ? "inscription_publique" : "inscription_gestion",
+        ev.titre+" — "+nomAdherent(adh)+(statut==="attente"?" (liste d'attente)":""),
+        origine==="public" ? nomAdherent(adh) : undefined, origine==="public" ? "public" : undefined);
+    }).catch(reportError);
+  }
+
+  // L'adhérent ajoute (+1) ou retire (-1) une personne sur sa propre inscription.
+  // Limite connue (comme pour l'inscription) : la vérification des places se fait côté appli, sans transaction serveur.
+  function modifierAccompagnants(insId, delta){
+    var i = state.inscriptions.find(function(x){ return x.id === insId; });
+    var ev = i && evenementById(i.evenementId), adh = i && adherentById(i.adherentId);
+    if(!i || !ev || !adh || (delta !== 1 && delta !== -1)) return;
+    if(role === "public" && (i.adherentId !== moiAdherentId || ev.statut !== "Ouvert" || evenementPasse(ev) || i.demandeAnnulation)) return;
+    var nv = (i.nbAccompagnants||0) + delta;
+    if(nv < 0 || nv > 10) return;
+    if(delta > 0 && i.statut === "inscrit" && placesRestantes(ev) < 1){ alert("Il n'y a plus de place disponible."); return; }
+    var batch = writeBatch(db);
+    avecReprise(batch, ev, i, "public");
+    batch.update(doc(db,"inscriptions",insId), { nbAccompagnants: nv });
+    ajouterMouvement(batch, ev, i.adherentId, delta > 0 ? "ajout" : "retrait", delta, i.statut === "inscrit" ? (ev.tarif||0) * delta : 0, "public",
+      "accompagnants : "+(i.nbAccompagnants||0)+" → "+nv);
+    batch.commit().then(function(){
+      logHistorique("modif_accompagnants", ev.titre+" — "+nomAdherent(adh)+" : "+(i.nbAccompagnants||0)+" → "+nv+" accompagnant(s)", nomAdherent(adh), "public");
+    }).catch(reportError);
+  }
+
+  // Case « Payé » (gestion) : enregistre un règlement du reste dû, ou annule les règlements déjà reçus.
+  function basculerPaiement(insId, coche){
+    var i = state.inscriptions.find(function(x){ return x.id === insId; });
+    var ev = i && evenementById(i.evenementId);
+    if(!i || !ev || !peutGerer(ev)) return;
+    var batch = writeBatch(db);
+    avecReprise(batch, ev, i, "gestion");
+    var ep = etatPaiement(ev, i);
+    if(!mouvementsDe(i.adherentId, ev.id).length && ep.du > 0) ep = { du: ep.du, regle: 0, reste: ep.du };
+    if(coche){
+      if(ep.reste > 0) ajouterMouvement(batch, ev, i.adherentId, "paiement", 0, -ep.reste, "gestion");
+    } else {
+      var net = mouvementsDe(i.adherentId, ev.id).length ? ep.regle : 0;
+      if(net > 0) ajouterMouvement(batch, ev, i.adherentId, "annulation_paiement", 0, net, "gestion");
+    }
+    batch.update(doc(db,"inscriptions",insId), { paye: coche });
+    batch.commit().then(function(){
+      logHistorique(coche ? "reglement" : "annulation_reglement", ev.titre+" — "+nomAdherent(adherentById(i.adherentId)));
+    }).catch(reportError);
+  }
+
+  document.addEventListener("submit", function(e){
+    var id = e.target.id;
+    if(id === "form-login"){
+      e.preventDefault();
+      signInWithEmailAndPassword(auth, e.target.email.value.trim(), e.target.code.value)
+        .then(function(){ loginFormOpen = false; loginError = ""; loginInfo = ""; })
+        .catch(function(){ loginError = "Email ou code incorrect."; renderAdminRow(); });
+    }
+    else if(id === "form-identite"){
+      e.preventDefault();
+      var f = e.target, p = f.prenom.value.trim().toLowerCase(), n = f.nom.value.trim().toLowerCase(), em = f.email.value.trim().toLowerCase();
+      idAdherent(em).then(function(hid){
+        return getDoc(doc(db,"adherents",hid)).then(function(snap){
+          var a = snap.exists() ? Object.assign({id:snap.id}, snap.data()) : null;
+          if(a && a.actif && (a.prenom||"").trim().toLowerCase()===p && (a.nom||"").trim().toLowerCase()===n && (a.email||"").trim().toLowerCase()===em){
+            moiAdherentId = a.id; try{ localStorage.setItem("evt-moi", a.id); }catch(x){}
+            state.adherents = [a]; identiteError = ""; identiteFormOpen = false; ecouterMoi();
+          } else identiteError = "Aucune fiche d'adhérent ne correspond à ces informations.";
+          renderAll();
+        });
+      }).catch(function(){ identiteError = "Connexion impossible, réessayez."; renderEvenements(); });
+    }
+    else if(id === "form-evenement"){
+      e.preventDefault();
+      var fe = e.target;
+      var champs = { titre: fe.titre.value.trim(), categorie: fe.categorie.value, statut: fe.statut.value, date: fe.date.value, lieu: fe.lieu.value.trim(),
+        debut: fe.debut.value, fin: fe.fin.value, placesTotal: Math.max(1, parseInt(fe.placesTotal.value,10)||1),
+        tarif: Math.max(0, parseFloat(fe.tarif.value)||0), description: fe.description.value.trim() };
+      if(modalEvenementId){
+        if(!peutGerer(evenementById(modalEvenementId))) return;
+        var pris = placesPrises(evenementById(modalEvenementId));
+        if(champs.placesTotal < pris){ modalErreur = "Impossible : "+pris+" place(s) déjà prises, on ne peut pas descendre en dessous."; renderModal(); return; }
+        updateDoc(doc(db,"evenements",modalEvenementId), champs).then(function(){ logHistorique("modification_evenement", champs.titre); fermerModal(); }).catch(reportError);
+      } else {
+        addDoc(collection(db,"evenements"), Object.assign({}, champs, {numero: state.evenements.reduce(function(m,e){ return Math.max(m, e.numero||0); }, 0) + 1, creePar: moiNom, organisateurUid: moiUid, organisateurNom: moiNom, creeLe: serverTimestamp()}))
+          .then(function(){ logHistorique("creation_evenement", champs.titre); fermerModal(); }).catch(reportError);
+      }
+    }
+    else if(id === "form-frais"){
+      e.preventDefault();
+      var ff = e.target, evF = modalEvenementId ? evenementById(modalEvenementId) : null, montF = Math.round(parseFloat(ff.montant.value)*100)/100;
+      var lienF = ff.lien.value.trim();
+      if(!evF || !peutGerer(evF) || !(montF > 0) || !ff.date.value){ fraisErreur = "Date ou montant invalide."; renderModal(); return; }
+      if(lienF && !lienSur(lienF)){ fraisErreur = "Le lien doit commencer par http:// ou https://."; renderModal(); return; }
+      addDoc(collection(db,"frais"), { evenementId: evF.id, organisateurUid: evF.organisateurUid || "", sens: ff.sens.value === "recette" ? "recette" : "depense",
+        date: ff.date.value, libelle: ff.libelle.value.trim(), fournisseur: ff.fournisseur.value.trim(), categorie: ff.categorie.value.trim(),
+        reference: ff.reference.value.trim(), lien: lienF, montant: montF, statut: ff.statut.value === "paye" ? "paye" : "a_payer",
+        parNom: moiNom, creeLe: serverTimestamp() }).then(function(){
+        fraisErreur = ""; logHistorique("frais_ajout", evF.titre+" — "+(ff.sens.value==="recette"?"recette ":"")+ff.libelle.value.trim()+" "+fmtEuro(montF));
+        ff.libelle.value = ""; ff.fournisseur.value = ""; ff.montant.value = ""; ff.reference.value = ""; ff.lien.value = ""; renderFinancesZone();
+      }).catch(reportError);
+    }
+    else if(id === "form-budget"){
+      e.preventDefault();
+      var evB = modalEvenementId ? evenementById(modalEvenementId) : null; if(!evB || !peutGerer(evB)) return;
+      var vB = e.target.budget.value.trim(), nB = vB === "" ? null : Math.max(0, Math.round(parseFloat(vB)*100)/100);
+      if(nB !== null && isNaN(nB)) return;
+      setDoc(doc(db,"fiches",evB.id), { evenementId: evB.id, organisateurUid: evB.organisateurUid || "", budget: nB }, {merge:true})
+        .then(function(){ logHistorique("budget", evB.titre+" — budget "+(nB===null?"retiré":fmtEuro(nB))); }).catch(reportError);
+    }
+    else if(id === "form-rappel"){
+      e.preventDefault();
+      var evR2 = modalEvenementId ? evenementById(modalEvenementId) : null; if(!evR2 || !peutGerer(evR2)) return;
+      var tR = e.target.texte.value.trim(); if(!tR) return;
+      ecrireRappels(evR2, ((ficheDe(evR2.id)||{}).rappels || []).concat([{ id: "r"+Date.now(), texte: tR, fait: false }])).then(function(){ e.target.texte.value = ""; }).catch(reportError);
+    }
+    else if(id === "form-reglement"){
+      e.preventDefault();
+      var fr = e.target, evR = evenementById(fr.ev.value), montR = Math.round(parseFloat(fr.montant.value)*100)/100;
+      if(!evR || !peutGerer(evR) || !(montR > 0)){ compteErreur = "Montant invalide."; renderCompte(); return; }
+      var bR = writeBatch(db), typeR = fr.type.value === "remboursement" ? "remboursement" : "paiement";
+      var insR = state.inscriptions.find(function(x){ return x.adherentId === compteAdherentId && x.evenementId === evR.id; });
+      if(insR){
+        var epR = etatPaiement(evR, insR);
+        if(typeR === "paiement" && montR > epR.reste && !confirm("Ce versement dépasse le reste dû ("+fmtEuro(Math.max(0,epR.reste))+"). L'enregistrer quand même ?")) return;
+        avecReprise(bR, evR, insR, "gestion");
+      }
+      ajouterMouvement(bR, evR, compteAdherentId, typeR, 0, typeR === "paiement" ? -montR : montR, "gestion");
+      bR.commit().then(function(){
+        compteErreur = ""; logHistorique("reglement", evR.titre+" — "+nomAdherent(adherentById(compteAdherentId))+" ("+(typeR==="paiement"?"reçu ":"remboursé ")+fmtEuro(montR)+")"); renderCompte();
+      }).catch(function(err){ compteErreur = "Erreur : "+(err&&err.message?err.message:err); renderCompte(); });
+    }
+    else if(id === "form-adherent"){
+      e.preventDefault();
+      var fa = e.target, mail = fa.email.value.trim();
+      idAdherent(mail).then(function(hid){
+        return getDoc(doc(db,"adherents",hid)).then(function(ex){
+          if(ex.exists()){ adherentErreur = "Cet email est déjà enregistré."; renderAdherents(); return; }
+          return setDoc(doc(db,"adherents",hid), { prenom: fa.prenom.value.trim(), nom: fa.nom.value.trim(), email: mail, tel: fa.tel.value.trim(),
+            numero: fa.numero.value.trim(), actif: true, creeLe: serverTimestamp() }).then(function(){
+            logHistorique("creation_adherent", fa.prenom.value.trim()+" "+fa.nom.value.trim()); adherentFormOpen = false; adherentErreur = ""; renderAdherents();
+          });
+        });
+      }).catch(reportError);
+    }
+    else if(id === "form-categorie"){
+      e.preventDefault();
+      var nom = e.target.nom.value.trim(); if(!nom) return;
+      var liste = state.categories.concat([nom]).filter(function(v,i,arr){ return arr.indexOf(v) === i; });
+      setDoc(doc(db,"parametres","config"), {categories: liste}, {merge:true}).then(function(){ e.target.reset(); logHistorique("categories","Ajout : "+nom); }).catch(reportError);
+    }
+    else if(id === "form-equipe"){
+      e.preventDefault();
+      var fq = e.target, nomEq = fq.nom.value.trim(), mailEq = fq.email.value.trim(), roleEq = fq.role.value === "directeur" ? "directeur" : "gestionnaire";
+      createUserWithEmailAndPassword(secondaryAuth, mailEq, fq.code.value).then(function(cred){
+        return setDoc(doc(db,"gestionnaires",cred.user.uid), { nom: nomEq, email: mailEq, actif: true, role: roleEq, creeLe: serverTimestamp() });
+      }).then(function(){ return signOut(secondaryAuth); }).then(function(){
+        logHistorique("ajout_equipe", nomEq+" ("+roleEq+")"); equipeFormOpen = false; equipeErreur = ""; renderParametres();
+      }).catch(function(err){
+        equipeErreur = err && err.code === "auth/email-already-in-use" ? "Cet email est déjà utilisé." : (err && err.code === "auth/weak-password" ? "Code trop court (6 caractères min.)." : "Erreur : "+(err&&err.message?err.message:err));
+        renderParametres();
+      });
+    }
+  });
+
+  // ---------- Firebase : écoutes ----------
+  function ecouterMoi(){
+    if(unsubMoiAdherent){ unsubMoiAdherent(); unsubMoiAdherent = null; }
+    if(unsubMoiMouv){ unsubMoiMouv(); unsubMoiMouv = null; }
+    if(role !== "public" || !moiAdherentId) return;
+    var demande = moiAdherentId;
+    unsubMoiMouv = onSnapshot(query(collection(db,"mouvements"), where("adherentId","==",demande)), function(s){
+      if(role !== "public" || moiAdherentId !== demande) return;
+      state.mouvements = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll();
+    }, erreurEcoute);
+    unsubMoiAdherent = onSnapshot(doc(db,"adherents",demande), function(snap){
+      if(role !== "public" || moiAdherentId !== demande) return;
+      if(snap.exists()) state.adherents = [Object.assign({id:snap.id}, snap.data())];
+      else { moiAdherentId = null; try{ localStorage.removeItem("evt-moi"); }catch(x){} state.adherents = []; }
+      renderAll();
+    }, function(){});
+  }
+  function attachRole(){
+    if(unsubAdherents) return;
+    unsubAdherents = onSnapshot(collection(db,"adherents"), function(s){ state.adherents = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
+    unsubGestionnaires = onSnapshot(collection(db,"gestionnaires"), function(s){ state.gestionnaires = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
+    var refFrais = role === "directeur" ? collection(db,"frais") : query(collection(db,"frais"), where("organisateurUid","==",moiUid));
+    var refFiches = role === "directeur" ? collection(db,"fiches") : query(collection(db,"fiches"), where("organisateurUid","==",moiUid));
+    unsubFiches = onSnapshot(refFiches, function(s){ state.fiches = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
+    unsubFrais = onSnapshot(refFrais, function(s){ state.frais = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
+    unsubMouvements = onSnapshot(collection(db,"mouvements"), function(s){ state.mouvements = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
+    unsubHistorique = onSnapshot(collection(db,"historique"), function(s){ state.historique = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
+  }
+  function detachRole(){
+    [unsubAdherents,unsubGestionnaires,unsubHistorique,unsubMouvements,unsubFrais,unsubFiches].forEach(function(u){ if(u) u(); });
+    unsubAdherents = unsubGestionnaires = unsubHistorique = unsubMouvements = unsubFrais = unsubFiches = null; state.frais = []; state.fiches = [];
+    state.adherents = []; state.gestionnaires = []; state.historique = []; state.mouvements = []; compteAdherentId = null;
+  }
+  var publicAttache = false;
+  // Pendant une déconnexion, la lecture est brièvement refusée : on ne montre pas d'alerte dans ce cas.
+  function erreurEcoute(err){ if(auth.currentUser) reportError(err); else console.error(err); }
+  function detachPublic(){
+    [unsubEvenements,unsubInscriptions,unsubParametres].forEach(function(u){ if(u) u(); });
+    unsubEvenements = unsubInscriptions = unsubParametres = null;
+    publicAttache = false;
+  }
+  function attachPublic(){
+    if(publicAttache) return; publicAttache = true;
+    unsubEvenements = onSnapshot(collection(db,"evenements"), function(s){ state.evenements = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, erreurEcoute);
+    unsubInscriptions = onSnapshot(collection(db,"inscriptions"), function(s){ state.inscriptions = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, erreurEcoute);
+    unsubParametres = onSnapshot(doc(db,"parametres","config"), function(snap){
+      state.categories = (snap.exists() && Array.isArray(snap.data().categories) && snap.data().categories.length) ? snap.data().categories : CATEGORIES_DEFAUT.slice();
+      renderAll();
+    }, function(){});
+  }
+
+  onAuthStateChanged(auth, function(user){
+    authReady = !!user;
+    document.getElementById("status-dot").classList.toggle("ok", authReady);
+    document.getElementById("status-text").textContent = authReady ? "Connecté — les données sont partagées en direct." : "Connexion à la base de données…";
+    if(authReady) attachPublic(); else detachPublic();
+    if(unsubMoi){ unsubMoi(); unsubMoi = null; }
+    detachRole(); role = "public"; moiNom = ""; moiUid = null;
+    try{ moiAdherentId = localStorage.getItem("evt-moi") || null; }catch(x){ moiAdherentId = null; }
+    ecouterMoi();
+    var motDePasse = !!(user && user.providerData.some(function(p){ return p.providerId === "password"; }));
+    if(user && motDePasse){
+      moiUid = user.uid;
+      unsubMoi = onSnapshot(doc(db,"gestionnaires",user.uid), function(snap){
+        if(snap.exists() && snap.data().actif){
+          if(unsubMoiAdherent){ unsubMoiAdherent(); unsubMoiAdherent = null; }
+          role = snap.data().role === "directeur" ? "directeur" : "gestionnaire";
+          moiNom = snap.data().nom || "";
+          attachRole();
+        } else { role = "public"; moiNom = ""; detachRole(); }
+        renderAll();
+      }, function(){ role = "public"; renderAll(); });
+    }
+    renderAll();
+  });
+  signInAnonymously(auth).catch(function(err){ document.getElementById("status-text").textContent = "Connexion impossible : " + (err && err.message ? err.message : err); });
+
+  // Rafraîchit l'affichage du « passé / à venir » même si la page reste ouverte longtemps.
+  setInterval(function(){ if(!modalOuverte) renderAll(); }, 5 * 60 * 1000);
+  renderAll();
+</script>
+</body>
+</html>
