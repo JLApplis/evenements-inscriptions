@@ -67,7 +67,7 @@
   .stat-label{color:var(--ink-soft);font-size:.7rem;margin-top:1px;line-height:1.25}
   .tabs{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;padding-bottom:16px;border-bottom:1px solid var(--line)}
   .tab{border-radius:var(--radius-sm);border:1px solid transparent;padding:10px 18px;font-weight:700;font-size:1rem;background:var(--accent);color:#fff;box-shadow:var(--shadow-sm)}
-  .tab[data-tab="parametres"]{background:var(--warm)}
+  .tab[data-tab="parametres"],.tab[data-tab="donnees"]{background:var(--warm)}
   .tab[aria-selected="true"]{box-shadow:inset 0 0 0 3px rgba(0,0,0,.3)}
   .panel{padding-top:20px}
   .toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
@@ -159,12 +159,14 @@
     <button class="tab" role="tab" data-tab="recap" aria-selected="false" id="tab-recap" hidden>Récapitulatif</button>
     <button class="tab" role="tab" data-tab="historique" aria-selected="false">Historique</button>
     <button class="tab" role="tab" data-tab="parametres" aria-selected="false" id="tab-parametres" hidden>Paramètres</button>
+    <button class="tab" role="tab" data-tab="donnees" aria-selected="false" id="tab-donnees" hidden>Données</button>
   </div>
   <section class="panel" id="panel-evenements"></section>
   <section class="panel" id="panel-adherents" hidden></section>
   <section class="panel" id="panel-recap" hidden></section>
   <section class="panel" id="panel-historique" hidden></section>
   <section class="panel" id="panel-parametres" hidden></section>
+  <section class="panel" id="panel-donnees" hidden></section>
   <div class="footer" id="footer">Gestion des évènements de l'association.</div>
 </div>
 
@@ -176,7 +178,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
   import { getAuth, signInAnonymously, signInWithEmailAndPassword, createUserWithEmailAndPassword,
     sendPasswordResetEmail, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-  import { getFirestore, collection, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, doc, getDoc, serverTimestamp, writeBatch, query, where }
+  import { getFirestore, collection, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, doc, getDoc, serverTimestamp, writeBatch, query, where, Timestamp }
     from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
   // ====== À REMPLIR : configuration de TON nouveau projet Firebase (voir LISEZ-MOI.md) ======
@@ -210,18 +212,19 @@
   const secondaryAuth = getAuth(secondaryApp);
 
   var CATEGORIES_DEFAUT = ["Sortie","Repas","Atelier","Assemblée","Spectacle"];
-  var STATUTS = ["Ouvert","Clos","Annulé"];
+  var STATUTS_BASE = ["Ouvert","À vérifier","Clos","Clôturé par défaut","Annulé"]; // protégés : l'appli en dépend
 
-  var state = { adherents: [], evenements: [], inscriptions: [], gestionnaires: [], historique: [], mouvements: [], frais: [], fiches: [], candidatures: [], categories: CATEGORIES_DEFAUT.slice() };
+  var state = { adherents: [], evenements: [], inscriptions: [], gestionnaires: [], historique: [], mouvements: [], frais: [], fiches: [], candidatures: [], categories: CATEGORIES_DEFAUT.slice(), statutsPerso: [] };
   var role = "public", moiNom = "", moiUid = null, moiAdherentId = null;
   var authReady = false;
   var currentTab = "evenements";
   var loginFormOpen = false, loginError = "", loginInfo = "";
   var identiteFormOpen = false, identiteError = "";
-  var modalEvenementId = null, modalOuverte = false, modalErreur = "";
+  var importStatus = "", importError = false, reinitialisationStatus = "", reinitialisationError = false;
+  var modalEvenementId = null, modalOuverte = false, modalErreur = "", modalCreeId = null, modalStatutBrouillon = null, modalJustifBrouillon = null, brouillon = { budget: null, frais: [], rappels: [] };
   var adherentFormOpen = false, adherentErreur = "";
   var adherentsRecherche = "", adherentsTri = "nom";
-  var evenementsRecherche = "", evenementsFiltreStatut = "", evenementsAvenirSeulement = true;
+  var evenementsRecherche = "", evenementsFiltreStatut = "", evenementsAvenirSeulement = true, evenementsMiens = false;
   var historiqueRecherche = "";
   var equipeFormOpen = false, equipeErreur = "";
   var candidatureFormOpen = false, candidatureError = "", candidatureEnvoyee = false, mailAEnvoyer = null;
@@ -265,8 +268,38 @@
   function placesPrises(ev){
     return inscriptionsDe(ev.id).filter(function(i){ return i.statut === "inscrit"; }).reduce(function(s,i){ return s + personnes(i); }, 0);
   }
-  function placesRestantes(ev){ return ev.placesTotal - placesPrises(ev); }
+  // Places : champ vide (enregistré 0) = illimité, par exemple pour une visite de musée.
+  function illimite(ev){ return !(ev.placesTotal > 0); }
+  function placesRestantes(ev){ return illimite(ev) ? Infinity : ev.placesTotal - placesPrises(ev); }
+  function txtPlaces(ev){ return illimite(ev) ? placesPrises(ev)+' inscrit(s), places illimitées' : placesPrises(ev)+' / '+ev.placesTotal+' places'; }
   function enAttente(ev){ return inscriptionsDe(ev.id).filter(function(i){ return i.statut === "attente"; }); }
+  // Statuts : 4 statuts de base protégés + statuts ajoutés par le Directeur (Paramètres).
+  function listeStatuts(){ return STATUTS_BASE.concat(state.statutsPerso.filter(function(x){ return STATUTS_BASE.indexOf(x) < 0; })); }
+  function aujourdhuiIso(){ var d = new Date(), p2 = function(n){ return String(n).padStart(2,"0"); }; return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); }
+  // « À vérifier » : le lendemain de la date, un évènement resté « Ouvert » est AFFICHÉ « À vérifier » tout de suite, puis ENREGISTRÉ comme tel
+  // dès qu'une session de son organisateur ou du Directeur est ouverte (pas de serveur qui tourne seul : voir persisterAVerifier).
+  function aVerifierAuto(ev){ return !!ev && ev.statut === "Ouvert" && !!ev.date && ev.date < aujourdhuiIso(); }
+  function statutAffiche(ev){ return aVerifierAuto(ev) ? "À vérifier" : ev.statut; }
+  function estAVerifier(ev){ return statutAffiche(ev) === "À vérifier"; }
+  // Points à contrôler avant de clôturer un évènement dont la date est passée (bloquants).
+  function controleCloture(ev){
+    var pb = [], ins = inscriptionsDe(ev.id), inscrits = ins.filter(function(i){ return i.statut === "inscrit"; });
+    var dem = ins.filter(function(i){ return i.demandeAnnulation; }).length;
+    if(dem) pb.push(dem+" demande(s) d'annulation à traiter");
+    if((ev.tarif||0) > 0){
+      var imp = 0, reste = 0, remb = 0;
+      inscrits.forEach(function(i){ var ep = etatPaiement(ev, i); if(ep.reste > 0){ imp++; reste += ep.reste; } else if(ep.reste < 0) remb++; });
+      if(imp) pb.push(imp+" inscrit(s) n'ont pas tout réglé (reste "+fmtEuro(reste)+")");
+      if(remb) pb.push(remb+" remboursement(s) à effectuer");
+    }
+    if(ev.gestionAvancee === true){
+      var fr = state.frais.filter(function(f){ return f.evenementId === ev.id && f.statut !== "paye"; });
+      if(fr.length) pb.push(fr.length+" frais ou recette(s) pas encore payés/reçus ("+fmtEuro(fr.reduce(function(sm,f){ return sm + (f.montant||0); }, 0))+")");
+      var nf = ((ficheDe(ev.id)||{}).rappels || []).filter(function(r){ return !r.fait; }).length;
+      if(nf) pb.push(nf+" rappel(s) non fait(s)");
+    }
+    return pb;
+  }
   function evenementPasse(ev){
     if(!ev || !ev.date) return false;
     var t = new Date(ev.date+"T"+(ev.fin||"23:59")+":00").getTime();
@@ -374,8 +407,8 @@
   function renderStats(){
     var tuiles = [];
     var aVenirOuverts = state.evenements.filter(function(e){ return e.statut === "Ouvert" && !evenementPasse(e); });
-    var placesLibres = aVenirOuverts.reduce(function(s,e){ return s + Math.max(0, placesRestantes(e)); }, 0);
-    function stat(v,l,alerte){ return '<div class="stat'+(alerte?" stat-alerte":"")+'"><div class="stat-value">'+v+'</div><div class="stat-label">'+l+'</div></div>'; }
+    var placesLibres = aVenirOuverts.reduce(function(s,e){ return s + (illimite(e) ? 0 : Math.max(0, placesRestantes(e))); }, 0);
+    function stat(v,l,alerte,action){ return '<div class="stat'+(alerte?" stat-alerte":"")+'"'+(action ? ' data-action="'+action+'" role="button" tabindex="0" style="cursor:pointer"' : '')+'><div class="stat-value">'+v+'</div><div class="stat-label">'+l+'</div></div>'; }
     if(role === "public"){
       tuiles.push(stat(aVenirOuverts.length,"Évènements proposés"), stat(placesLibres,"Places disponibles"));
     } else {
@@ -385,6 +418,12 @@
         var ev = evenementById(i.evenementId);
         if(ev && peutGerer(ev) && i.statut === "inscrit" && (ev.tarif||0) > 0 && etatPaiement(ev,i).reste > 0) impayes++;
       });
+      var nbAVerifier = state.evenements.filter(function(e){ return estAVerifier(e) && peutGerer(e); }).length;
+      if(nbAVerifier) tuiles.push(stat(nbAVerifier, "Évènement"+(nbAVerifier>1?"s":"")+" à vérifier avant clôture (cliquer pour filtrer)", true, "filtre-a-verifier"));
+      if(role === "directeur"){
+        var nbCd = state.evenements.filter(function(e){ return e.statut === "Clôturé par défaut"; }).length;
+        if(nbCd) tuiles.push(stat(nbCd, "Évènement"+(nbCd>1?"s":"")+" clôturé"+(nbCd>1?"s":"")+" par défaut à examiner (cliquer pour filtrer)", true, "filtre-clotures-defaut"));
+      }
       if(state.candidatures.length) tuiles.push(stat(state.candidatures.length, "Candidature"+(state.candidatures.length>1?"s":"")+" à valider (onglet Adhérents)", true));
       if(demandes) tuiles.push(stat(demandes, "Demande"+(demandes>1?"s":"")+" d'annulation", true));
       if(impayes) tuiles.push(stat(impayes, "Paiement"+(impayes>1?"s":"")+" en attente", true));
@@ -402,7 +441,7 @@
     var restantes = placesRestantes(ev);
     var moi = moiAdherentId ? adherentById(moiAdherentId) : null;
     var monInscription = moiAdherentId ? inscriptionsDe(ev.id).find(function(i){ return i.adherentId === moiAdherentId; }) : null;
-    var badge = restantes <= 0 ? '<span class="badge low">Complet</span>' : '<span class="badge">'+restantes+' place'+(restantes>1?'s':'')+' restante'+(restantes>1?'s':'')+'</span>';
+    var badge = illimite(ev) ? '<span class="badge">Places illimitées</span>' : restantes <= 0 ? '<span class="badge low">Complet</span>' : '<span class="badge">'+restantes+' place'+(restantes>1?'s':'')+' restante'+(restantes>1?'s':'')+'</span>';
     var action = "";
     if(!moi){
       action = '<div class="meta">Identifiez-vous ci-dessus pour vous inscrire.</div>';
@@ -489,6 +528,7 @@
       + (required?"required ":"") + (extra||"") + (value!=null && value!=="" ? 'value="'+esc(value)+'"' : '') + '></div>';
   }
 
+  function recherchevide(){ evenementsRecherche = ""; }
   function renderEvenements(){
     var html;
     if(role === "public"){
@@ -501,8 +541,9 @@
     }
     var r = evenementsRecherche.trim().toLowerCase();
     var liste = state.evenements.filter(function(e){
-      if(evenementsAvenirSeulement && evenementPasse(e)) return false;
-      if(evenementsFiltreStatut && e.statut !== evenementsFiltreStatut) return false;
+      if(evenementsAvenirSeulement && evenementPasse(e) && ["À vérifier","Clôturé par défaut"].indexOf(evenementsFiltreStatut) < 0) return false;
+      if(evenementsFiltreStatut && statutAffiche(e) !== evenementsFiltreStatut) return false;
+      if(evenementsMiens && !peutGerer(e)) return false;
       if(!r) return true;
       return (e.titre||"").toLowerCase().indexOf(r) >= 0 || (e.lieu||"").toLowerCase().indexOf(r) >= 0 || (e.categorie||"").toLowerCase().indexOf(r) >= 0;
     }).sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
@@ -512,19 +553,20 @@
       var dem = peutGerer(e) && inscriptionsDe(e.id).some(function(i){ return i.demandeAnnulation; });
       return '<tr class="clic" data-action="edit-evenement" data-id="'+e.id+'">'
         + '<td class="num">'+(e.numero||"—")+'</td><td><strong>'+fmtDateCourt(e.date)+'</strong><div class="meta">'+esc(e.debut)+'–'+esc(e.fin)+'</div></td>'
-        + '<td>'+esc(e.titre)+badgeAvance(e)+(dem?' <span class="badge warm">⚠ annulation</span>':'')+'<div class="meta">'+esc(e.lieu)+'</div></td>'
+        + '<td>'+esc(e.titre)+badgeAvance(e)+(dem?' <span class="badge warm">⚠ annulation</span>':'')+'<div class="meta">'+esc(e.lieu)+'</div>'+(e.statut==="Clôturé par défaut" && e.justificationCloture && peutGerer(e) ? '<div class="meta">⚠ '+esc(e.justificationCloture.slice(0,90))+(e.justificationCloture.length>90?'…':'')+'</div>' : '')+'</td>'
         + '<td>'+esc(e.categorie||"")+'</td>'
         + '<td>'+esc(organisateurDe(e)||"—")+(peutGerer(e)?'':' <span class="meta">(lecture)</span>')+'</td>'
-        + '<td class="num"><span class="badge'+(placesRestantes(e)<=0?' low':'')+'">'+placesPrises(e)+' / '+e.placesTotal+'</span></td>'
+        + '<td class="num"><span class="badge'+(placesRestantes(e)<=0?' low':'')+'">'+(illimite(e) ? placesPrises(e)+' (illimité)' : placesPrises(e)+' / '+e.placesTotal)+'</span></td>'
         + '<td class="num">'+att+'</td><td class="num">'+((e.tarif||0)>0?fmtEuro(e.tarif):'Gratuit')+'</td>'
-        + '<td><span class="badge'+(e.statut==="Ouvert"?' ok':(e.statut==="Annulé"?' low':' warm'))+'">'+esc(e.statut)+'</span></td></tr>';
+        + '<td><span class="badge'+(statutAffiche(e)==="Ouvert"?' ok':(statutAffiche(e)==="Annulé"?' low':' warm'))+'">'+esc(statutAffiche(e))+'</span></td></tr>';
     }).join("");
     html = '<div class="toolbar"><h2>Évènements</h2><button class="btn btn-primary" data-action="open-evenement">+ Créer un évènement</button></div>'
       + (state.candidatures.length ? '<div class="alert">⚠ '+state.candidatures.length+' candidature(s) d\'adhérent à valider : onglet Adhérents.</div>' : '')
       + (demandes ? '<div class="alert">⚠ '+demandes+' demande(s) d\'annulation en attente : ouvrez l\'évènement concerné pour les traiter.</div>' : '')
       + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">'
       + '<div class="field" style="min-width:240px"><label for="ev-recherche">Recherche</label><input type="search" id="ev-recherche" value="'+esc(evenementsRecherche)+'" placeholder="Titre, lieu, catégorie…"></div>'
-      + '<div class="field"><label for="ev-statut">Statut</label><select id="ev-statut"><option value="">Tous</option>'+STATUTS.map(function(s){ return '<option'+(s===evenementsFiltreStatut?' selected':'')+'>'+s+'</option>'; }).join("")+'</select></div>'
+      + '<div class="field"><label for="ev-statut">Statut</label><select id="ev-statut"><option value="">Tous</option>'+listeStatuts().map(function(x){ return '<option'+(x===evenementsFiltreStatut?' selected':'')+'>'+esc(x)+'</option>'; }).join("")+'</select></div>'
+      + '<label class="check field" style="flex-direction:row;align-items:center"><input type="checkbox" id="ev-miens" '+(evenementsMiens?'checked':'')+'> Seulement ceux que je gère</label>'
       + '<label class="check field" style="flex-direction:row;align-items:center"><input type="checkbox" id="ev-avenir" '+(evenementsAvenirSeulement?'checked':'')+'> À venir seulement</label></div>'
       + (liste.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th class="num">N°</th><th>Date</th><th>Évènement</th><th>Catégorie</th><th>Organisateur</th><th class="num">Inscrits / places</th><th class="num">Attente</th><th class="num">Tarif</th><th>Statut</th></tr></thead><tbody>'+lignes+'</tbody></table></div>'
         : '<div class="empty-state">Aucun évènement ne correspond.</div>');
@@ -536,6 +578,7 @@
     var root = document.getElementById("modal-root");
     if(!modalOuverte){ root.innerHTML = ""; return; }
     var ev = modalEvenementId ? evenementById(modalEvenementId) : null;
+    if(modalEvenementId && !ev && modalEvenementId === modalCreeId) return; // évènement tout juste créé : on attend son arrivée en direct
     if(modalEvenementId && !ev){ modalOuverte = false; modalEvenementId = null; root.innerHTML = ""; return; }
     var cats = state.categories.slice(); if(ev && ev.categorie && cats.indexOf(ev.categorie) < 0) cats.push(ev.categorie);
     if(ev && !peutGerer(ev)){
@@ -550,34 +593,42 @@
         + '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="cancel-modal">Fermer</button></div></div></div></div>';
       renderInscritsZone(); return;
     }
+    var stSel = ev ? (modalStatutBrouillon || statutAffiche(ev)) : "Ouvert";
+    var jSel = modalJustifBrouillon !== null ? modalJustifBrouillon : ((ev && ev.justificationCloture) || "");
+    var pbCl = ev ? controleCloture(ev) : [];
+    var closSel = stSel === "Clos" || stSel === "Clôturé par défaut";
     function sel(label,name,opts,val){ return '<div class="field"><label for="f-'+name+'">'+label+'</label><select id="f-'+name+'" name="'+name+'">'+opts.map(function(o){ return '<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>'; }).join("")+'</select></div>'; }
     root.innerHTML = '<div class="modal-backdrop" data-action="close-modal"><div class="modal-box">'
-      + '<div class="modal-head"><h3>'+(ev?"Modifier l'évènement"+(ev.numero?" "+numEv(ev):""):"Créer un évènement")+badgeAvance(ev)+'</h3><button type="button" class="modal-close" data-action="cancel-modal" aria-label="Fermer">✕</button></div>'
+      + '<div class="modal-head"><h3>'+(ev?"Modifier l'évènement"+(ev.numero?" "+numEv(ev):""):"Créer un évènement")+'<span id="badge-avance">'+badgeAvance(ev)+'</span></h3><button type="button" class="modal-close" data-action="cancel-modal" aria-label="Fermer">✕</button></div>'
       + '<div class="modal-body"><form id="form-evenement">'
       + (ev ? '<div class="meta" style="margin-bottom:10px">Organisateur : <strong>'+esc(organisateurDe(ev)||"—")+'</strong></div>' : '')
+      + (ev && estAVerifier(ev) ? '<div class="alert">⚠ Évènement à vérifier : sa date est passée. Contrôlez les inscrits, les paiements et surtout les finances, puis passez le statut à « Clos ». S\'il reste des points à régler, la clôture sera enregistrée « Clôturé par défaut » avec votre justification et signalée au Directeur.</div>' : '')
+      + (ev && ev.statut === "Clôturé par défaut" ? '<div class="alert">⚠ Clôturé par défaut'+(ev.clotureLe ? ' le '+fmtTs(ev.clotureLe) : '')+(ev.cloturePar ? ' par '+esc(ev.cloturePar) : '')+'. Justification : « '+esc(ev.justificationCloture||"—")+' ». Vous pouvez revenir sur cet évènement pour le rectifier (passez-le à « Clos » quand tout est réglé) ou le laisser tel quel.</div>' : '')
       + champ("Titre","titre","text",ev?ev.titre:"",true)
-      + '<div class="field-row">'+sel("Catégorie","categorie",cats,ev?ev.categorie:cats[0])+sel("Statut","statut",STATUTS,ev?ev.statut:"Ouvert")+'</div>'
+      + '<div class="field-row">'+sel("Catégorie","categorie",cats,ev?ev.categorie:cats[0])+sel("Statut","statut",(function(){ var l = listeStatuts(); if(l.indexOf(stSel) < 0) l.push(stSel); return l; })(),stSel)+'</div>'
       + '<div class="field-row">'+champ("Date","date","date",ev?ev.date:"",true)+champ("Lieu","lieu","text",ev?ev.lieu:"",true)+'</div>'
       + '<div class="field-row">'+champ("Début","debut","time",ev?ev.debut:"",true)+champ("Fin","fin","time",ev?ev.fin:"",true)
-      + champ("Places","placesTotal","number",ev?ev.placesTotal:"",true,'min="1" ')+champ("Tarif par personne (€, 0 = gratuit)","tarif","number",ev?(ev.tarif||0):0,true,'min="0" step="0.01" ')
+      + champ("Places","placesTotal","number",ev&&ev.placesTotal>0?ev.placesTotal:"",false,'min="1" placeholder="Illimité" ')+champ("Tarif par personne","tarif","number",ev?(ev.tarif||0):0,false,'min="0" step="0.01" ')
       + champ("Accompagnants autorisés par inscrit (0 = aucun)","accompagnantsMax","number",ev?accMax(ev):0,true,'min="0" max="10" ')+'</div>'
       + '<div class="field"><label for="f-description">Description (visible par tous)</label><textarea id="f-description" name="description" rows="2">'+esc(ev?ev.description:"")+'</textarea></div>'
+      + (ev ? '<div id="justif-bloc" class="field" style="margin-bottom:10px"'+(closSel?'':' hidden')+'><div class="meta" style="margin-bottom:4px">Contrôle automatique avant clôture : <strong>'+(pbCl.length ? esc(pbCl.join(" ; ")) : "aucun point à régler")+'</strong></div>'
+        + '<label for="f-justification">Justification de la clôture (obligatoire si des points restent à régler : l\'évènement est alors « Clôturé par défaut » et signalé au Directeur)</label>'
+        + '<textarea id="f-justification" name="justification" rows="3" maxlength="1000">'+esc(jSel)+'</textarea></div>' : '')
       + '<label class="check" style="margin-bottom:10px"><input type="checkbox" name="gestionAvancee" '+(ev && ev.gestionAvancee===true?'checked':'')+'> Gestion avancée : finances de l\'évènement (frais engagés, budget, autres recettes, rappels, bilan imprimable)</label>'
       + (modalErreur ? '<div class="error-text" style="margin-bottom:8px">'+esc(modalErreur)+'</div>' : '')
       + '<div class="form-actions"><button type="submit" class="btn btn-primary" '+(authReady?"":"disabled")+'>💾 '+(ev?"Enregistrer":"Créer")+'</button>'
       + '<button type="button" class="btn btn-ghost" data-action="cancel-modal">Fermer</button>'
       + (ev && role==="directeur" ? '<button type="button" class="btn-danger-ghost" data-action="delete-evenement" data-id="'+ev.id+'">Supprimer l\'évènement</button>' : '')
       + '</div></form>'
-      + (ev ? '<div id="inscrits-zone"></div><div id="finances-zone"></div>' + formulaireFrais() : '') + '</div></div></div>';
+      + (ev ? '<div id="inscrits-zone"></div>' : '') + '<div id="finances-bloc"'+(ev && ev.gestionAvancee===true ? '' : ' hidden')+'><div id="finances-zone"></div>' + formulaireFrais() + '</div></div></div></div>';
     renderInscritsZone(); renderFinancesZone();
   }
 
   function formulaireFrais(){
-    if(!modeAvance(modalEvenementId ? evenementById(modalEvenementId) : null)) return "";
     var d = new Date(), p2 = function(n){ return String(n).padStart(2,"0"); };
     var auj = d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
     var ev = modalEvenementId ? evenementById(modalEvenementId) : null, fiche = ev ? ficheDe(ev.id) : null;
-    var budgetVal = fiche && typeof fiche.budget === "number" ? fiche.budget : "";
+    var budgetVal = ev ? (fiche && typeof fiche.budget === "number" ? fiche.budget : "") : (brouillon.budget === null ? "" : brouillon.budget);
     return '<form id="form-budget" class="form" style="margin-top:10px"><div class="section-title">Budget prévu</div><div class="field-row">'
       + champ("Budget prévu pour l\'évènement (€, vide = aucun)","budget","number",budgetVal,false,'min="0" step="0.01" ')
       + '</div><div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Enregistrer le budget</button></div></form>'
@@ -639,14 +690,26 @@
         + (accMax(ev) > 0 ? '<textarea id="sel-acc" rows="2" placeholder="Accompagnants (un nom par ligne, max '+accMax(ev)+')" style="min-width:220px"></textarea>' : '')
         + '<button type="button" class="btn btn-sm" data-action="inscrire-adherent" data-id="'+ev.id+'">Inscrire</button></div>'
       : '<div class="meta" style="margin-top:12px">Tous les adhérents actifs sont déjà inscrits.</div>';
-    zone.innerHTML = '<div class="section-title">👥 Inscrits — '+placesPrises(ev)+' / '+ev.placesTotal+' places ('+(restantes<=0?'complet':restantes+' libre(s)')+')</div>'
+    zone.innerHTML = '<div class="section-title">👥 Inscrits — '+(illimite(ev) ? placesPrises(ev)+' personne(s), places illimitées' : placesPrises(ev)+' / '+ev.placesTotal+' places ('+(restantes<=0?'complet':restantes+' libre(s)')+')')+'</div>'
       + (rows || '<div class="meta">Personne d\'inscrit pour le moment.</div>') + ajout;
   }
 
   function classeMontant(x){ return x < 0 ? "solde-pos" : (x > 0 ? "solde-neg" : ""); }
   function renderFinancesZone(){
     var zone = document.getElementById("finances-zone");
-    if(!zone || !modalEvenementId) return;
+    if(!zone) return;
+    if(!modalEvenementId){
+      var dep = 0, rec = 0;
+      brouillon.frais.forEach(function(f){ if(f.sens === "recette") rec += f.montant; else dep += f.montant; });
+      zone.innerHTML = '<div class="section-title" style="margin-top:14px">💶 Finances de l\'évènement (brouillon, enregistré avec « Créer »)</div>'
+        + '<div class="meta">Budget prévu : <strong>'+(brouillon.budget===null?"—":fmtEuro(brouillon.budget))+'</strong> · Frais engagés : <strong>'+fmtEuro(dep)+'</strong> · Autres recettes : <strong>'+fmtEuro(rec)+'</strong></div>'
+        + (brouillon.frais.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th>Date</th><th>Libellé</th><th>Type</th><th class="num">Montant</th><th></th></tr></thead><tbody>'
+            + brouillon.frais.map(function(f){ return '<tr><td>'+fmtDateCourt(f.date)+'</td><td>'+esc(f.libelle)+(f.fournisseur?'<div class="meta">'+esc(f.fournisseur)+'</div>':'')+'</td><td>'+(f.sens==="recette"?"Recette":"Frais")+' · '+(f.statut==="paye"?"payé/reçu":"à payer/attendu")+'</td><td class="num">'+fmtEuro(f.montant)+'</td>'
+              + '<td><button type="button" class="btn-danger-ghost" data-action="supprimer-brouillon-frais" data-id="'+f.id+'">Retirer</button></td></tr>'; }).join("")
+            + '</tbody></table></div>' : '<div class="meta">Aucun frais saisi pour le moment.</div>')
+        + (brouillon.rappels.length ? '<div class="section-title" style="margin-top:10px">🔔 Rappels</div>' + brouillon.rappels.map(function(r){ return '<div class="meta">• '+esc(r.texte)+' <button type="button" class="link-btn" data-action="supprimer-brouillon-rappel" data-id="'+r.id+'">Retirer</button></div>'; }).join("") : '');
+      return;
+    }
     var ev = evenementById(modalEvenementId);
     if(!ev || !peutGerer(ev) || !modeAvance(ev)){ zone.innerHTML = ""; return; }
     var b = bilanEvenement(ev);
@@ -776,7 +839,7 @@
       var att = enAttente(ev).reduce(function(sm,i){ return sm + personnes(i); }, 0);
       return '<div class="card" style="margin-bottom:16px"><div class="card-title">'+(ev.numero?'<span class="meta">'+numEv(ev)+'</span> ':'')+esc(ev.titre)+'</div>'
         + '<div class="meta">'+fmtDateCourt(ev.date)+' · '+esc(ev.lieu)+' · Organisé par '+esc(organisateurDe(ev)||"—")+' · '+esc(ev.statut)+'</div>'
-        + '<div class="meta"><strong>'+placesPrises(ev)+' / '+ev.placesTotal+'</strong> places prises'+(att?' · '+att+' en attente':'')
+        + '<div class="meta"><strong>'+(illimite(ev) ? placesPrises(ev)+' personne(s)</strong> (places illimitées)' : placesPrises(ev)+' / '+ev.placesTotal+'</strong> places prises')+(att?' · '+att+' en attente':'')
         + (tarif ? ' · À encaisser : <strong>'+fmtEuro(totDu)+'</strong> · Reçu : <strong>'+fmtEuro(totRegle)+'</strong> · Reste : <strong class="'+(totReste>0?'solde-pos':'')+'">'+fmtEuro(totReste)+'</strong>' : ' · Gratuit')+'</div>'
         + '<div class="meta">Frais engagés : <strong>'+fmtEuro(bil.engage)+'</strong> (payés '+fmtEuro(bil.fraisPayes)+')'+(bil.budget!==null?' sur un budget de '+fmtEuro(bil.budget):'')+(bil.recettesRecues?' · Autres recettes reçues : <strong>'+fmtEuro(bil.recettesRecues)+'</strong>':'')+' · Résultat actuel : <strong class="'+(bil.resultat<0?'solde-pos':'solde-neg')+'">'+fmtEuro(bil.resultat)+'</strong></div>'
         + (ins.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th>Inscrit</th><th class="num">Pers.</th>'
@@ -855,7 +918,7 @@
   }
 
   // ---------- historique ----------
-  var ACTIONS = { candidature_envoyee:"Candidature envoyée", candidature_validee:"Candidature validée", candidature_refusee:"Candidature refusée", budget:"Budget modifié", frais_ajout:"Frais ajouté", frais_suppression:"Frais supprimé", modif_accompagnants:"Accompagnants modifiés", reglement:"Règlement / remboursement enregistré", annulation_reglement:"Règlement annulé", creation_evenement:"Évènement créé", modification_evenement:"Évènement modifié", suppression_evenement:"Évènement supprimé",
+  var ACTIONS = { cloture_defaut:"Évènement clôturé par défaut (justifié)", a_verifier_auto:"Passé automatiquement à « À vérifier »", cloture_evenement:"Évènement clôturé", statuts:"Statuts modifiés", import_donnees:"Données importées", reinitialisation_application:"Application réinitialisée", candidature_envoyee:"Candidature envoyée", candidature_validee:"Candidature validée", candidature_refusee:"Candidature refusée", budget:"Budget modifié", frais_ajout:"Frais ajouté", frais_suppression:"Frais supprimé", modif_accompagnants:"Accompagnants modifiés", reglement:"Règlement / remboursement enregistré", annulation_reglement:"Règlement annulé", creation_evenement:"Évènement créé", modification_evenement:"Évènement modifié", suppression_evenement:"Évènement supprimé",
     inscription_publique:"Inscription (adhérent)", inscription_gestion:"Inscription (gestion)", suppression_inscription:"Inscription retirée",
     promotion_attente:"Passé de l'attente à inscrit", demande_annulation:"Demande d'annulation", creation_adherent:"Adhérent ajouté",
     suppression_adherent:"Adhérent supprimé", ajout_equipe:"Compte gestion ajouté", categories:"Catégories modifiées" };
@@ -891,10 +954,13 @@
       + '<h3 style="margin:0 0 8px">Catégories d\'évènements</h3>'
       + '<form class="form" id="form-categorie"><div class="field-row">'+champ("Nouvelle catégorie","nom","text","",true)+'</div><div class="form-actions"><button type="submit" class="btn btn-primary">Ajouter</button></div></form>'
       + cats + '<div class="form-hint" style="margin:8px 0 26px">Retirer une catégorie ne modifie pas les évènements qui l\'utilisent déjà.</div>'
+      + '<h3 style="margin:0 0 8px">Statut des évènements</h3>'
+      + STATUTS_BASE.map(function(x){ return '<div class="list-row"><span>'+esc(x)+'</span><span class="badge">protégé</span></div>'; }).join("")
+      + state.statutsPerso.map(function(x){ return '<div class="list-row"><span>'+esc(x)+'</span><button class="btn-danger-ghost" data-action="delete-statut" data-st="'+esc(x)+'">Retirer</button></div>'; }).join("")
+      + '<form class="form" id="form-statut"><div class="field-row">'+champ("Nouveau statut","nom","text","",true)+'</div><div class="form-actions"><button type="submit" class="btn btn-primary">Ajouter</button></div></form>'
+      + '<div class="form-hint" style="margin:8px 0 26px">« À vérifier » s\'affiche automatiquement le lendemain de la date d\'un évènement resté « Ouvert » ; son créateur doit le contrôler (surtout les finances) avant de le passer à « Clos ». S\'il reste des points à régler, la clôture devient « Clôturé par défaut » (justification obligatoire) et remonte au Directeur. Les 5 statuts de base ne peuvent pas être retirés.</div>'
       + '<div class="toolbar"><h3>Équipe de gestion</h3><button class="btn btn-primary" data-action="open-equipe">+ Ajouter</button></div>'
-      + formEquipe + (equipe || '<div class="empty-state">Aucun compte.</div>')
-      + '<h3 style="margin:26px 0 8px">Données</h3><div class="card" style="max-width:520px"><div class="meta">Télécharge une copie horodatée des adhérents, évènements, inscriptions et de l\'historique.</div>'
-      + '<div><button class="btn btn-primary" data-action="export-json">Exporter (JSON)</button></div></div>';
+      + formEquipe + (equipe || '<div class="empty-state">Aucun compte.</div>');
   }
 
   // ---------- rendu global ----------
@@ -902,18 +968,20 @@
     var gestion = role !== "public";
     document.getElementById("tabs-bar").hidden = !gestion;
     document.getElementById("tab-parametres").hidden = role !== "directeur";
+    document.getElementById("tab-donnees").hidden = role !== "directeur";
     var recapOk = role === "directeur" && ilYAAvance();
     document.getElementById("tab-recap").hidden = !recapOk;
     if(!recapOk && currentTab === "recap") switchTab("evenements");
     if(!gestion && currentTab !== "evenements") switchTab("evenements");
-    if(role !== "directeur" && currentTab === "parametres") switchTab("evenements");
+    if(role !== "directeur" && (currentTab === "parametres" || currentTab === "donnees")) switchTab("evenements");
   }
   function switchTab(name){
     currentTab = name;
     document.querySelectorAll(".tab").forEach(function(b){ b.setAttribute("aria-selected", b.getAttribute("data-tab")===name?"true":"false"); });
-    ["evenements","adherents","recap","historique","parametres"].forEach(function(t){ document.getElementById("panel-"+t).hidden = (t !== name); });
+    ["evenements","adherents","recap","historique","parametres","donnees"].forEach(function(t){ document.getElementById("panel-"+t).hidden = (t !== name); });
   }
   function renderAll(){
+    if(modalCreeId && modalOuverte && evenementById(modalCreeId)){ modalCreeId = null; renderModal(); }
     updateTabs(); renderAdminRow(); renderStats();
     // Ne pas écraser un champ de recherche en cours de frappe : on re-rend le panneau actif seulement s'il n'a pas le focus dans un champ.
     var actif = document.activeElement;
@@ -924,14 +992,24 @@
       if(currentTab==="recap" && role==="directeur" && ilYAAvance()) renderRecap();
       if(currentTab==="historique" && role!=="public") renderHistorique();
       if(currentTab==="parametres" && role==="directeur") renderParametres();
+      if(currentTab==="donnees" && role==="directeur") renderDonnees();
     }
     renderInscritsZone();
     if(!compteAdherentId) document.getElementById("compte-root").innerHTML = "";
     renderCompteZone(); renderFinancesZone();
-    backfillNumeros();
+    backfillNumeros(); persisterAVerifier();
   }
 
   // Numérote les évènements créés avant l'introduction des numéros (une seule fois, par le Directeur).
+  var avPersistes = {};
+  function persisterAVerifier(){
+    if(role === "public") return;
+    state.evenements.forEach(function(ev){
+      if(!aVerifierAuto(ev) || !peutGerer(ev) || avPersistes[ev.id]) return;
+      avPersistes[ev.id] = true;
+      updateDoc(doc(db,"evenements",ev.id), { statut: "À vérifier" }).then(function(){ logHistorique("a_verifier_auto", ev.titre); }).catch(function(err){ console.error("statut À vérifier:", err); });
+    });
+  }
   function backfillNumeros(){
     if(role !== "directeur" || backfillEnCours) return;
     var sans = state.evenements.filter(function(e){ return !e.numero; });
@@ -947,7 +1025,104 @@
   document.querySelectorAll(".tab").forEach(function(b){ b.addEventListener("click", function(){ switchTab(b.getAttribute("data-tab")); renderAll(); }); });
 
   // ---------- actions ----------
-  function fermerModal(){ modalOuverte = false; modalEvenementId = null; modalErreur = ""; renderModal(); }
+  // ---------- Onglet Données (Directeur) : export, import, réinitialisation ----------
+  function renderDonnees(){
+    if(role !== "directeur") return;
+    document.getElementById("panel-donnees").innerHTML =
+      '<div class="toolbar"><div><h2>Données</h2><div class="meta">Exporter une copie des données, ou restaurer depuis un fichier exporté précédemment</div></div></div>'
+      + '<div class="card" style="max-width:520px"><div class="card-title">Exporter</div>'
+      + '<div class="meta">Télécharge un instantané horodaté des adhérents, évènements, inscriptions, comptes (mouvements), frais, fiches financières, candidatures et de l\'historique. À faire avant toute suppression importante.</div>'
+      + '<div><button class="btn btn-primary" data-action="export-json">Exporter horodaté (JSON)</button></div></div>'
+      + '<div class="card" style="max-width:520px;margin-top:14px"><div class="card-title">Importer</div>'
+      + '<div class="meta">Restaure adhérents, évènements, inscriptions, frais, fiches financières, comptes et catégories à partir d\'un fichier exporté avec le bouton ci-dessus. '
+      + 'Un enregistrement qui existe déjà en ligne (même identifiant) est mis à jour avec le contenu du fichier ; les enregistrements en ligne absents du fichier ne sont jamais supprimés. '
+      + 'Exception : les lignes du compte des adhérents (mouvements) déjà présentes ne sont jamais modifiées, seules les manquantes sont ajoutées. '
+      + 'Les candidatures, l\'historique et les gestionnaires ne sont pas concernés par l\'import : les gestionnaires sont de vrais comptes de connexion, à recréer via l\'onglet Paramètres.</div>'
+      + '<div><input type="file" id="import-file-input" accept="application/json" hidden><button class="btn" data-action="import-json">Importer des données (JSON)</button></div>'
+      + (importStatus ? '<div class="'+(importError?"error-text":"ok-text")+'" style="margin-top:6px">'+esc(importStatus)+'</div>' : '')
+      + '</div>'
+      + '<div class="card" style="max-width:520px;margin-top:14px"><div class="card-title">Réinitialiser l\'application</div>'
+      + '<div class="meta">Supprime définitivement tous les adhérents, évènements, inscriptions, comptes, frais, fiches financières et candidatures — par exemple pour repartir d\'une base vide après une démonstration. '
+      + 'L\'historique et le registre des comptes sont aussi vidés si les règles de sécurité Firestore l\'autorisent (le message après réinitialisation précise ce qui a effectivement été fait). '
+      + 'Les comptes Gestionnaire/Directeur et les catégories sont conservés. Pensez à exporter une copie avant.</div>'
+      + '<div><button type="button" class="btn-danger-ghost" data-action="reinitialiser-application">Réinitialiser l\'application</button></div>'
+      + (reinitialisationStatus ? '<div class="'+(reinitialisationError?"error-text":"ok-text")+'" style="margin-top:6px">'+esc(reinitialisationStatus)+'</div>' : '')
+      + '</div>';
+  }
+
+  // Remet les dates exportées ({__ts: ms} ou {seconds, nanoseconds}) sous forme de dates Firestore.
+  function restaurerDates(x){
+    if(Array.isArray(x)) return x.map(restaurerDates);
+    if(x && typeof x === "object"){
+      if(typeof x.__ts === "number") return Timestamp.fromMillis(x.__ts);
+      if(typeof x.seconds === "number" && typeof x.nanoseconds === "number") return new Timestamp(x.seconds, x.nanoseconds);
+      var o = {}; Object.keys(x).forEach(function(k){ o[k] = restaurerDates(x[k]); }); return o;
+    }
+    return x;
+  }
+  function importerDonnees(data){
+    var lot1 = [], lot2 = [];
+    function copieSansId(o){ var c = restaurerDates(Object.assign({}, o)); delete c.id; return c; }
+    var nbCat = 0;
+    if(Array.isArray(data.categories) && data.categories.length){
+      var fusion = state.categories.concat(data.categories).filter(function(c,i,arr){ return c && arr.indexOf(c) === i; });
+      nbCat = fusion.length - state.categories.length;
+      if(nbCat > 0) lot1.push(setDoc(doc(db,"parametres","config"), {categories: fusion}, {merge:true}));
+    }
+    if(Array.isArray(data.statuts) && data.statuts.length){
+      var fusionS = state.statutsPerso.concat(data.statuts).filter(function(x,i,arr){ return x && STATUTS_BASE.indexOf(x) < 0 && arr.indexOf(x) === i; });
+      if(fusionS.length > state.statutsPerso.length) lot1.push(setDoc(doc(db,"parametres","config"), {statuts: fusionS}, {merge:true}));
+    }
+    (data.adherents||[]).forEach(function(o){ if(o && o.id) lot1.push(setDoc(doc(db,"adherents",o.id), copieSansId(o))); });
+    (data.evenements||[]).forEach(function(o){ if(o && o.id) lot1.push(setDoc(doc(db,"evenements",o.id), copieSansId(o))); });
+    // Les inscriptions, frais, fiches et mouvements viennent APRÈS les évènements : les règles de sécurité vérifient que l'évènement existe.
+    var dejaMvt = {}; state.mouvements.forEach(function(m){ dejaMvt[m.id] = true; });
+    var nbMvt = 0;
+    Promise.all(lot1).then(function(){
+      (data.inscriptions||[]).forEach(function(o){ if(o && o.id) lot2.push(setDoc(doc(db,"inscriptions",o.id), copieSansId(o))); });
+      (data.frais||[]).forEach(function(o){ if(o && o.id) lot2.push(setDoc(doc(db,"frais",o.id), copieSansId(o))); });
+      (data.fiches||[]).forEach(function(o){ if(o && o.id) lot2.push(setDoc(doc(db,"fiches",o.id), copieSansId(o))); });
+      (data.mouvements||[]).forEach(function(o){ if(o && o.id && !dejaMvt[o.id]){ nbMvt++; lot2.push(setDoc(doc(db,"mouvements",o.id), copieSansId(o))); } });
+      return Promise.all(lot2);
+    }).then(function(){
+      importStatus = "Import terminé : "+(data.adherents||[]).length+" adhérent(s), "+(data.evenements||[]).length+" évènement(s), "+(data.inscriptions||[]).length+" inscription(s), "
+        +(data.frais||[]).length+" frais, "+(data.fiches||[]).length+" fiche(s) financière(s), "+nbMvt+" ligne(s) de compte ajoutée(s)"+(nbCat>0 ? ", "+nbCat+" catégorie(s) ajoutée(s)" : "")+".";
+      importError = false; logHistorique("import_donnees", importStatus); renderDonnees();
+    }).catch(function(err){
+      importStatus = "Erreur pendant l'import : "+(err && err.message ? err.message : err); importError = true; renderDonnees();
+    });
+  }
+
+  // Réinitialisation complète (Directeur) : confirmation par saisie du mot SUPPRIMER.
+  // L'historique et le registre des comptes sont traités à part (« au mieux ») : les règles peuvent les protéger contre la suppression,
+  // ce qui ne doit pas faire échouer le reste.
+  function reinitialiserApplication(){
+    if(role !== "directeur") return;
+    var saisie = prompt("Ceci va supprimer DÉFINITIVEMENT tous les adhérents, évènements, inscriptions, comptes, frais, fiches financières et candidatures. "
+      + "Les comptes Gestionnaire/Directeur et les catégories sont conservés. L'historique et le registre des comptes sont aussi vidés si les règles de sécurité l'autorisent.\n\n"
+      + "Pensez à exporter une copie avant (bouton « Exporter horodaté »).\n\nPour confirmer, tapez SUPPRIMER (en majuscules) :");
+    if(saisie === null) return;
+    if(saisie.trim() !== "SUPPRIMER"){ reinitialisationStatus = "Réinitialisation annulée : le texte tapé ne correspondait pas à « SUPPRIMER »."; reinitialisationError = true; renderDonnees(); return; }
+    var nb = { adherents: state.adherents.length, evenements: state.evenements.length, inscriptions: state.inscriptions.length, frais: state.frais.length, fiches: state.fiches.length,
+      candidatures: state.candidatures.length, mouvements: state.mouvements.length, historique: state.historique.length };
+    var principales = [];
+    [["inscriptions",state.inscriptions],["frais",state.frais],["fiches",state.fiches],["candidatures",state.candidatures],["adherents",state.adherents],["evenements",state.evenements]].forEach(function(c){
+      c[1].forEach(function(o){ principales.push(deleteDoc(doc(db,c[0],o.id))); });
+    });
+    var okMvt = 0, okHist = 0;
+    var auMieux = state.mouvements.map(function(o){ return deleteDoc(doc(db,"mouvements",o.id)).then(function(){ okMvt++; }).catch(function(){}); })
+      .concat(state.historique.map(function(o){ return deleteDoc(doc(db,"historique",o.id)).then(function(){ okHist++; }).catch(function(){}); }));
+    Promise.all(principales).then(function(){ return Promise.all(auMieux); }).then(function(){
+      var msg = "Application réinitialisée : "+nb.adherents+" adhérent(s), "+nb.evenements+" évènement(s), "+nb.inscriptions+" inscription(s), "+nb.frais+" frais, "+nb.fiches+" fiche(s) financière(s) et "+nb.candidatures+" candidature(s) supprimés.";
+      msg += (nb.mouvements === 0 ? " Aucune ligne de compte à supprimer." : okMvt === nb.mouvements ? " "+okMvt+" ligne(s) de compte supprimée(s)." : " Le registre des comptes ("+(nb.mouvements-okMvt)+" ligne(s)) n'a PAS pu être entièrement supprimé : les règles de sécurité Firestore ne l'autorisent pas (republier le fichier firestore.rules).");
+      msg += (nb.historique === 0 ? "" : okHist === nb.historique ? " "+okHist+" entrée(s) d'historique supprimée(s)." : " L'historique ("+(nb.historique-okHist)+" entrée(s)) n'a pas pu être entièrement supprimé : les règles de sécurité Firestore ne l'autorisent pas (probablement volontaire, pour garder un journal fiable).");
+      reinitialisationStatus = msg; reinitialisationError = false; logHistorique("reinitialisation_application", msg); renderDonnees();
+    }).catch(function(err){
+      reinitialisationStatus = "Erreur pendant la réinitialisation : "+(err && err.message ? err.message : err)+" (une partie a peut-être déjà été supprimée)."; reinitialisationError = true; renderDonnees();
+    });
+  }
+
+  function fermerModal(){ modalStatutBrouillon = null; modalJustifBrouillon = null; brouillon = { budget: null, frais: [], rappels: [] }; modalCreeId = null; modalOuverte = false; modalEvenementId = null; modalErreur = ""; renderModal(); }
 
   document.addEventListener("click", function(e){
     var el = e.target.closest("[data-action]");
@@ -1000,6 +1175,13 @@
       }).catch(reportError);
     }
     else if(a==="imprimer-bilan"){ imprimerBilan(id); }
+    else if(a==="supprimer-brouillon-frais"){ brouillon.frais = brouillon.frais.filter(function(f){ return f.id !== id; }); renderFinancesZone(); }
+    else if(a==="supprimer-brouillon-rappel"){ brouillon.rappels = brouillon.rappels.filter(function(r){ return r.id !== id; }); renderFinancesZone(); }
+    else if(a==="rappels-types" && !modalEvenementId){
+      var dejaB = brouillon.rappels.map(function(r){ return r.texte; });
+      RAPPELS_TYPES.forEach(function(t,k){ if(dejaB.indexOf(t) < 0) brouillon.rappels.push({ id: "b"+Date.now()+"-"+k, texte: t, fait: false }); });
+      renderFinancesZone();
+    }
     else if(a==="rappels-types"){
       var evT = modalEvenementId ? evenementById(modalEvenementId) : null; if(!evT || !peutGerer(evT)) return;
       var exist = ((ficheDe(evT.id)||{}).rappels || []), textes = exist.map(function(r){ return r.texte; });
@@ -1027,8 +1209,8 @@
         logHistorique("demande_annulation", ev0 ? ev0.titre : "", ad0 ? nomAdherent(ad0) : "Adhérent", "public");
       }).catch(reportError);
     }
-    else if(a==="open-evenement"){ modalOuverte = true; modalEvenementId = null; modalErreur = ""; renderModal(); }
-    else if(a==="edit-evenement"){ modalOuverte = true; modalEvenementId = id; modalErreur = ""; renderModal(); }
+    else if(a==="open-evenement"){ modalStatutBrouillon = null; modalJustifBrouillon = null; brouillon = { budget: null, frais: [], rappels: [] }; modalOuverte = true; modalEvenementId = null; modalErreur = ""; renderModal(); }
+    else if(a==="edit-evenement"){ modalStatutBrouillon = null; modalJustifBrouillon = null; modalOuverte = true; modalEvenementId = id; modalErreur = ""; renderModal(); }
     else if(a==="cancel-modal"){ fermerModal(); }
     else if(a==="close-modal"){ if(e.target === el) fermerModal(); }
     else if(a==="delete-evenement"){
@@ -1079,17 +1261,27 @@
       if(!confirm("Retirer la catégorie « "+cat+" » de la liste proposée ?")) return;
       setDoc(doc(db,"parametres","config"), {categories: state.categories.filter(function(c){ return c !== cat; })}, {merge:true}).then(function(){ logHistorique("categories","Retrait : "+cat); }).catch(reportError);
     }
+    else if(a==="filtre-a-verifier"){ evenementsFiltreStatut = "À vérifier"; evenementsAvenirSeulement = false; evenementsMiens = true; recherchevide(); switchTab("evenements"); renderEvenements(); }
+    else if(a==="filtre-clotures-defaut"){ evenementsFiltreStatut = "Clôturé par défaut"; evenementsAvenirSeulement = false; evenementsMiens = false; recherchevide(); switchTab("evenements"); renderEvenements(); }
+    else if(a==="delete-statut"){
+      var stD = el.getAttribute("data-st");
+      if(!confirm("Retirer le statut « "+stD+" » de la liste ? Les évènements qui l'utilisent déjà le gardent.")) return;
+      setDoc(doc(db,"parametres","config"), {statuts: state.statutsPerso.filter(function(x){ return x !== stD; })}, {merge:true}).then(function(){ logHistorique("statuts","Retrait : "+stD); }).catch(reportError);
+    }
     else if(a==="open-equipe"){ equipeFormOpen = true; equipeErreur = ""; renderParametres(); }
     else if(a==="cancel-equipe"){ equipeFormOpen = false; renderParametres(); }
     else if(a==="toggle-gestionnaire"){ var g = state.gestionnaires.find(function(x){ return x.id === id; }); if(g) updateDoc(doc(db,"gestionnaires",id), {actif: !g.actif}).catch(reportError); }
     else if(a==="export-json"){
-      var data = { exporteLe: new Date().toISOString(), categories: state.categories, adherents: state.adherents, evenements: state.evenements, inscriptions: state.inscriptions, mouvements: state.mouvements, candidatures: state.candidatures, frais: state.frais, fiches: state.fiches, historique: state.historique };
-      var url = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], {type:"application/json"}));
+      // Les dates Firestore sont écrites {__ts: millisecondes} pour pouvoir être restaurées à l'import.
+      var data = { exporteLe: new Date().toISOString(), categories: state.categories, statuts: state.statutsPerso, adherents: state.adherents, evenements: state.evenements, inscriptions: state.inscriptions, mouvements: state.mouvements, candidatures: state.candidatures, frais: state.frais, fiches: state.fiches, historique: state.historique };
+      var url = URL.createObjectURL(new Blob([JSON.stringify(data, function(k, v){ var o = this[k]; return (o && typeof o === "object" && typeof o.toMillis === "function") ? { __ts: o.toMillis() } : v; }, 2)], {type:"application/json"}));
       var d = new Date(), p = function(n){ return String(n).padStart(2,"0"); };
       var lien = document.createElement("a"); lien.href = url;
       lien.download = "evenements-export-"+d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"-"+p(d.getHours())+"h"+p(d.getMinutes())+".json";
       document.body.appendChild(lien); lien.click(); document.body.removeChild(lien); URL.revokeObjectURL(url);
     }
+    else if(a==="import-json"){ var fi = document.getElementById("import-file-input"); if(fi) fi.click(); }
+    else if(a==="reinitialiser-application"){ reinitialiserApplication(); }
   });
 
   document.addEventListener("keydown", function(e){ if(e.key === "Escape" && modalOuverte) fermerModal(); });
@@ -1106,6 +1298,34 @@
   document.addEventListener("change", function(e){
     var t = e.target;
     if(t.id === "ev-statut"){ evenementsFiltreStatut = t.value; renderEvenements(); }
+    else if(t.id === "ev-miens"){ evenementsMiens = t.checked; renderEvenements(); }
+    else if(t.id === "f-statut" && t.closest && t.closest("#form-evenement")){ var vb = document.getElementById("justif-bloc"); if(vb) vb.hidden = !(t.value === "Clos" || t.value === "Clôturé par défaut"); }
+    else if(t.id === "import-file-input"){
+      var file = t.files[0]; if(!file || role !== "directeur") return;
+      var reader = new FileReader();
+      reader.onload = function(){
+        var dataI;
+        try{ dataI = JSON.parse(reader.result); }catch(err){ importStatus = "Fichier invalide : ce n'est pas un export JSON valide."; importError = true; renderDonnees(); return; }
+        if(!dataI || typeof dataI !== "object" || !(Array.isArray(dataI.adherents) || Array.isArray(dataI.evenements))){
+          importStatus = "Fichier invalide : ce n'est pas un export de cette application."; importError = true; renderDonnees(); return;
+        }
+        var nA = (dataI.adherents||[]).length, nE = (dataI.evenements||[]).length, nI = (dataI.inscriptions||[]).length;
+        if(!confirm("Importer ce fichier ? "+nA+" adhérent(s), "+nE+" évènement(s) et "+nI+" inscription(s) du fichier remplaceront ceux qui portent le même identifiant en ligne. Rien d'autre ne sera supprimé.")){ t.value = ""; return; }
+        importerDonnees(dataI); t.value = "";
+      };
+      reader.readAsText(file);
+    }
+    else if(t.name === "gestionAvancee" && t.closest && t.closest("#form-evenement")){
+      // Un clic sur la case déroule (ou replie) aussitôt la gestion financière ; sur un évènement existant le réglage est enregistré tout de suite.
+      var evG = modalEvenementId ? evenementById(modalEvenementId) : null;
+      var blocG = document.getElementById("finances-bloc"), badgeG = document.getElementById("badge-avance");
+      if(blocG) blocG.hidden = !t.checked;
+      if(badgeG) badgeG.innerHTML = t.checked ? ' <span class="badge warm">Gestion avancée</span>' : '';
+      if(evG && peutGerer(evG)){
+        updateDoc(doc(db,"evenements",evG.id), {gestionAvancee: t.checked})
+          .then(function(){ logHistorique("modification_evenement", evG.titre+" — gestion avancée "+(t.checked?"activée":"désactivée")); }).catch(reportError);
+      }
+    }
     else if(t.matches('[data-action="toggle-frais-paye"]')){
       updateDoc(doc(db,"frais",t.getAttribute("data-id")), {statut: t.checked ? "paye" : "a_payer"}).catch(reportError);
     }
@@ -1235,20 +1455,75 @@
       e.preventDefault();
       var fe = e.target;
       var champs = { titre: fe.titre.value.trim(), categorie: fe.categorie.value, statut: fe.statut.value, date: fe.date.value, lieu: fe.lieu.value.trim(),
-        debut: fe.debut.value, fin: fe.fin.value, placesTotal: Math.max(1, parseInt(fe.placesTotal.value,10)||1),
+        debut: fe.debut.value, fin: fe.fin.value, placesTotal: Math.max(0, parseInt(fe.placesTotal.value,10)||0),
         tarif: Math.max(0, parseFloat(fe.tarif.value)||0), accompagnantsMax: Math.max(0, Math.min(10, parseInt(fe.accompagnantsMax.value,10)||0)), gestionAvancee: !!fe.gestionAvancee.checked,
         description: fe.description.value.trim() };
       if(modalEvenementId){
         if(!peutGerer(evenementById(modalEvenementId))) return;
+        var prevE = evenementById(modalEvenementId);
+        // Clôture : jamais refusée (c'est la responsabilité du créateur). S'il reste des points à régler, le statut devient « Clôturé par défaut »,
+        // avec une justification obligatoire, et l'évènement remonte au Directeur.
+        var justifE = fe.justification ? fe.justification.value.trim() : "", pbE = [];
+        if(champs.statut === "Clos" && champs.date < aujourdhuiIso()){ pbE = controleCloture(prevE); if(pbE.length) champs.statut = "Clôturé par défaut"; }
+        var changeSt = prevE.statut !== champs.statut;
+        if(champs.statut === "Clôturé par défaut"){
+          if(justifE.length < 5){
+            modalStatutBrouillon = "Clôturé par défaut"; modalJustifBrouillon = justifE;
+            modalErreur = (pbE.length ? "Il reste des points à régler : "+pbE.join(" ; ")+". " : "")+"Indiquez une justification : l'évènement sera enregistré « Clôturé par défaut » et signalé au Directeur.";
+            renderModal(); return;
+          }
+          champs.justificationCloture = justifE;
+          if(changeSt){ champs.cloturePar = moiNom; champs.clotureLe = serverTimestamp(); }
+        } else if(champs.statut === "Clos"){
+          if(changeSt){ champs.justificationCloture = ""; champs.cloturePar = moiNom; champs.clotureLe = serverTimestamp(); }
+        } else if(prevE.justificationCloture){ champs.justificationCloture = ""; }
         var pris = placesPrises(evenementById(modalEvenementId));
-        if(champs.placesTotal < pris){ modalErreur = "Impossible : "+pris+" place(s) déjà prises, on ne peut pas descendre en dessous."; renderModal(); return; }
+        if(champs.placesTotal > 0 && champs.placesTotal < pris){ modalErreur = "Impossible : "+pris+" place(s) déjà prises, on ne peut pas descendre en dessous."; renderModal(); return; }
         var maxUtilise = inscriptionsDe(modalEvenementId).reduce(function(m,x){ return Math.max(m, x.nbAccompagnants||0); }, 0);
         if(champs.accompagnantsMax < accMax(evenementById(modalEvenementId)) && champs.accompagnantsMax < maxUtilise){ modalErreur = "Impossible : un inscrit a déjà "+maxUtilise+" accompagnant(s)."; renderModal(); return; }
-        updateDoc(doc(db,"evenements",modalEvenementId), champs).then(function(){ logHistorique("modification_evenement", champs.titre); fermerModal(); }).catch(reportError);
+        updateDoc(doc(db,"evenements",modalEvenementId), champs).then(function(){ logHistorique(champs.statut === "Clôturé par défaut" && changeSt ? "cloture_defaut" : (champs.statut === "Clos" && changeSt ? "cloture_evenement" : "modification_evenement"), champs.titre+(champs.statut === "Clôturé par défaut" && changeSt ? " — "+justifE.slice(0,200) : "")); fermerModal(); }).catch(reportError);
       } else {
+        var brou = champs.gestionAvancee ? brouillon : { budget: null, frais: [], rappels: [] };
         addDoc(collection(db,"evenements"), Object.assign({}, champs, {numero: state.evenements.reduce(function(m,e){ return Math.max(m, e.numero||0); }, 0) + 1, creePar: moiNom, organisateurUid: moiUid, organisateurNom: moiNom, creeLe: serverTimestamp()}))
-          .then(function(){ logHistorique("creation_evenement", champs.titre); fermerModal(); }).catch(reportError);
+          .then(function(ref){
+            logHistorique("creation_evenement", champs.titre);
+            var suite = Promise.resolve();
+            if(brou.frais.length || brou.rappels.length || brou.budget !== null){
+              var bw = writeBatch(db);
+              brou.frais.forEach(function(f){
+                var d = Object.assign({}, f); delete d.id;
+                bw.set(doc(collection(db,"frais")), Object.assign(d, { evenementId: ref.id, organisateurUid: moiUid, creeLe: serverTimestamp() }));
+              });
+              if(brou.budget !== null || brou.rappels.length) bw.set(doc(db,"fiches",ref.id), { evenementId: ref.id, organisateurUid: moiUid, budget: brou.budget, rappels: brou.rappels });
+              suite = bw.commit();
+            }
+            suite.catch(reportError);
+            if(!champs.gestionAvancee){ fermerModal(); return; }
+            brouillon = { budget: null, frais: [], rappels: [] };
+            modalCreeId = ref.id; modalEvenementId = ref.id; modalErreur = ""; renderModal(); // la fenêtre reste ouverte sur la gestion financière
+          }).catch(reportError);
       }
+    }
+    else if(id === "form-frais" && !modalEvenementId){
+      e.preventDefault();
+      var fb = e.target, montB = Math.round(parseFloat(fb.montant.value)*100)/100, lienB = fb.lien.value.trim();
+      if(!(montB > 0) || !fb.date.value){ alert("Date ou montant invalide."); return; }
+      if(lienB && !lienSur(lienB)){ alert("Le lien doit commencer par http:// ou https://."); return; }
+      brouillon.frais.push({ id: "b"+Date.now()+"-"+brouillon.frais.length, sens: fb.sens.value === "recette" ? "recette" : "depense", date: fb.date.value,
+        libelle: fb.libelle.value.trim(), fournisseur: fb.fournisseur.value.trim(), categorie: fb.categorie.value.trim(), reference: fb.reference.value.trim(),
+        lien: lienB, montant: montB, statut: fb.statut.value === "paye" ? "paye" : "a_payer", parNom: moiNom });
+      fb.libelle.value = ""; fb.fournisseur.value = ""; fb.montant.value = ""; fb.reference.value = ""; fb.lien.value = ""; renderFinancesZone();
+    }
+    else if(id === "form-budget" && !modalEvenementId){
+      e.preventDefault();
+      var vBb = e.target.budget.value.trim(), nBb = vBb === "" ? null : Math.max(0, Math.round(parseFloat(vBb)*100)/100);
+      if(nBb !== null && isNaN(nBb)) return;
+      brouillon.budget = nBb; renderFinancesZone();
+    }
+    else if(id === "form-rappel" && !modalEvenementId){
+      e.preventDefault();
+      var tRb = e.target.texte.value.trim(); if(!tRb) return;
+      brouillon.rappels.push({ id: "b"+Date.now(), texte: tRb, fait: false }); e.target.texte.value = ""; renderFinancesZone();
     }
     else if(id === "form-frais"){
       e.preventDefault();
@@ -1313,6 +1588,12 @@
       var liste = state.categories.concat([nom]).filter(function(v,i,arr){ return arr.indexOf(v) === i; });
       setDoc(doc(db,"parametres","config"), {categories: liste}, {merge:true}).then(function(){ e.target.reset(); logHistorique("categories","Ajout : "+nom); }).catch(reportError);
     }
+    else if(id === "form-statut"){
+      e.preventDefault();
+      var nomS = e.target.nom.value.trim(); if(!nomS) return;
+      if(listeStatuts().some(function(x){ return x.toLowerCase() === nomS.toLowerCase(); })){ alert("Ce statut existe déjà."); return; }
+      setDoc(doc(db,"parametres","config"), {statuts: state.statutsPerso.concat([nomS])}, {merge:true}).then(function(){ e.target.reset(); logHistorique("statuts","Ajout : "+nomS); }).catch(reportError);
+    }
     else if(id === "form-equipe"){
       e.preventDefault();
       var fq = e.target, nomEq = fq.nom.value.trim(), mailEq = fq.email.value.trim(), roleEq = fq.role.value === "directeur" ? "directeur" : "gestionnaire";
@@ -1375,6 +1656,7 @@
     unsubInscriptions = onSnapshot(collection(db,"inscriptions"), function(s){ state.inscriptions = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, erreurEcoute);
     unsubParametres = onSnapshot(doc(db,"parametres","config"), function(snap){
       state.categories = (snap.exists() && Array.isArray(snap.data().categories) && snap.data().categories.length) ? snap.data().categories : CATEGORIES_DEFAUT.slice();
+      state.statutsPerso = (snap.exists() && Array.isArray(snap.data().statuts)) ? snap.data().statuts : [];
       renderAll();
     }, function(){});
   }
