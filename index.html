@@ -224,7 +224,7 @@
   var modalEvenementId = null, modalOuverte = false, modalErreur = "", modalCreeId = null, modalStatutBrouillon = null, modalJustifBrouillon = null, brouillon = { budget: null, frais: [], rappels: [] };
   var adherentFormOpen = false, adherentErreur = "";
   var adherentsRecherche = "", adherentsTri = "nom";
-  var evenementsRecherche = "", evenementsFiltreStatut = "", evenementsAvenirSeulement = true, evenementsMiens = false;
+  var evenementsRecherche = "", evenementsFiltreStatut = "", evenementsAvenirSeulement = true, evenementsMiens = false, evenementsFiltreTuile = "", adherentsFiltreActifs = false;
   var historiqueRecherche = "";
   var equipeFormOpen = false, equipeErreur = "";
   var candidatureFormOpen = false, candidatureError = "", candidatureEnvoyee = false, mailAEnvoyer = null;
@@ -410,7 +410,7 @@
     var placesLibres = aVenirOuverts.reduce(function(s,e){ return s + (illimite(e) ? 0 : Math.max(0, placesRestantes(e))); }, 0);
     function stat(v,l,alerte,action){ return '<div class="stat'+(alerte?" stat-alerte":"")+'"'+(action ? ' data-action="'+action+'" role="button" tabindex="0" style="cursor:pointer"' : '')+'><div class="stat-value">'+v+'</div><div class="stat-label">'+l+'</div></div>'; }
     if(role === "public"){
-      tuiles.push(stat(aVenirOuverts.length,"Évènements proposés"), stat(placesLibres,"Places disponibles"));
+      tuiles.push(stat(aVenirOuverts.length,"Évènements proposés",false,"tuile-avenir"), stat(placesLibres,"Places disponibles",false,"tuile-places"));
     } else {
       var demandes = state.inscriptions.filter(function(i){ return i.demandeAnnulation && peutGerer(evenementById(i.evenementId)); }).length;
       var impayes = 0;
@@ -424,14 +424,14 @@
         var nbCd = state.evenements.filter(function(e){ return e.statut === "Clôturé par défaut"; }).length;
         if(nbCd) tuiles.push(stat(nbCd, "Évènement"+(nbCd>1?"s":"")+" clôturé"+(nbCd>1?"s":"")+" par défaut à examiner (cliquer pour filtrer)", true, "filtre-clotures-defaut"));
       }
-      if(state.candidatures.length) tuiles.push(stat(state.candidatures.length, "Candidature"+(state.candidatures.length>1?"s":"")+" à valider (onglet Adhérents)", true));
-      if(demandes) tuiles.push(stat(demandes, "Demande"+(demandes>1?"s":"")+" d'annulation", true));
-      if(impayes) tuiles.push(stat(impayes, "Paiement"+(impayes>1?"s":"")+" en attente", true));
+      if(state.candidatures.length) tuiles.push(stat(state.candidatures.length, "Candidature"+(state.candidatures.length>1?"s":"")+" à valider (cliquer pour les voir)", true, "tuile-candidatures"));
+      if(demandes) tuiles.push(stat(demandes, "Demande"+(demandes>1?"s":"")+" d'annulation (cliquer pour filtrer)", true, "tuile-annulation"));
+      if(impayes) tuiles.push(stat(impayes, "Paiement"+(impayes>1?"s":"")+" en attente (cliquer pour filtrer)", true, "tuile-impayes"));
       var inscritsAvenir = 0, attenteAvenir = 0;
       aVenirOuverts.forEach(function(e){ inscritsAvenir += placesPrises(e); attenteAvenir += enAttente(e).reduce(function(s,i){ return s+personnes(i); },0); });
-      tuiles.push(stat(aVenirOuverts.length,"Évènements à venir"), stat(placesLibres,"Places libres"),
-        stat(inscritsAvenir,"Personnes inscrites (à venir)"), stat(attenteAvenir,"Personnes en attente"),
-        stat(state.adherents.filter(function(a){ return a.actif; }).length,"Adhérents actifs"));
+      tuiles.push(stat(aVenirOuverts.length,"Évènements à venir",false,"tuile-avenir"), stat(placesLibres,"Places libres",false,"tuile-places"),
+        stat(inscritsAvenir,"Personnes inscrites (à venir)",false,"tuile-inscrits"), stat(attenteAvenir,"Personnes en attente",false,"tuile-attente"),
+        stat(state.adherents.filter(function(a){ return a.actif; }).length,"Adhérents actifs",false,"tuile-adherents-actifs"));
     }
     document.getElementById("stats").innerHTML = tuiles.join("");
   }
@@ -529,12 +529,34 @@
   }
 
   function recherchevide(){ evenementsRecherche = ""; }
+  var LIBELLES_TUILES = { annulation: "avec une demande d'annulation", impayes: "avec des paiements en attente", avenir: "à venir (ouverts)",
+    places: "à venir avec des places libres", inscrits: "à venir avec des inscrits", attente: "à venir avec des personnes en attente" };
+  function ouvertAvenir(e){ return e.statut === "Ouvert" && !evenementPasse(e); }
+  function tuileOk(e){
+    switch(evenementsFiltreTuile){
+      case "annulation": return peutGerer(e) && inscriptionsDe(e.id).some(function(i){ return i.demandeAnnulation; });
+      case "impayes": return peutGerer(e) && (e.tarif||0) > 0 && inscriptionsDe(e.id).some(function(i){ return i.statut === "inscrit" && etatPaiement(e,i).reste > 0; });
+      case "avenir": return ouvertAvenir(e);
+      case "places": return ouvertAvenir(e) && !illimite(e) && placesRestantes(e) > 0;
+      case "inscrits": return ouvertAvenir(e) && placesPrises(e) > 0;
+      case "attente": return ouvertAvenir(e) && enAttente(e).length > 0;
+    }
+    return true;
+  }
+  function bandeauFiltreTuile(){
+    return evenementsFiltreTuile ? '<div class="alert" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">Filtre actif : évènements '+LIBELLES_TUILES[evenementsFiltreTuile]
+      +' <button type="button" class="btn btn-ghost btn-sm" data-action="retirer-filtre-tuile">Retirer le filtre</button></div>' : '';
+  }
+  // Ouvre la messagerie par défaut avec le message prérempli (sans bouton) ; le navigateur peut demander une autorisation la première fois.
+  function ouvrirMessagerie(href){
+    try { var l = document.createElement("a"); l.href = href; l.style.display = "none"; document.body.appendChild(l); l.click(); document.body.removeChild(l); } catch(err){}
+  }
   function renderEvenements(){
     var html;
     if(role === "public"){
-      var visibles = state.evenements.filter(function(e){ return e.statut === "Ouvert" && !evenementPasse(e); })
+      var visibles = state.evenements.filter(function(e){ return e.statut === "Ouvert" && !evenementPasse(e) && tuileOk(e); })
         .sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
-      html = '<div class="toolbar"><h2>Évènements</h2></div>' + renderIdentite()
+      html = '<div class="toolbar"><h2>Évènements</h2></div>' + renderIdentite() + bandeauFiltreTuile()
         + (visibles.length ? '<div class="card-grid">'+visibles.map(carteEvenementPublic).join("")+'</div>' : '<div class="empty-state">Aucun évènement proposé pour l\'instant.</div>');
       document.getElementById("panel-evenements").innerHTML = html;
       return;
@@ -544,6 +566,7 @@
       if(evenementsAvenirSeulement && evenementPasse(e) && ["À vérifier","Clôturé par défaut"].indexOf(evenementsFiltreStatut) < 0) return false;
       if(evenementsFiltreStatut && statutAffiche(e) !== evenementsFiltreStatut) return false;
       if(evenementsMiens && !peutGerer(e)) return false;
+      if(!tuileOk(e)) return false;
       if(!r) return true;
       return (e.titre||"").toLowerCase().indexOf(r) >= 0 || (e.lieu||"").toLowerCase().indexOf(r) >= 0 || (e.categorie||"").toLowerCase().indexOf(r) >= 0;
     }).sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
@@ -563,6 +586,7 @@
     html = '<div class="toolbar"><h2>Évènements</h2><button class="btn btn-primary" data-action="open-evenement">+ Créer un évènement</button></div>'
       + (state.candidatures.length ? '<div class="alert">⚠ '+state.candidatures.length+' candidature(s) d\'adhérent à valider : onglet Adhérents.</div>' : '')
       + (demandes ? '<div class="alert">⚠ '+demandes+' demande(s) d\'annulation en attente : ouvrez l\'évènement concerné pour les traiter.</div>' : '')
+      + bandeauFiltreTuile()
       + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">'
       + '<div class="field" style="min-width:240px"><label for="ev-recherche">Recherche</label><input type="search" id="ev-recherche" value="'+esc(evenementsRecherche)+'" placeholder="Titre, lieu, catégorie…"></div>'
       + '<div class="field"><label for="ev-statut">Statut</label><select id="ev-statut"><option value="">Tous</option>'+listeStatuts().map(function(x){ return '<option'+(x===evenementsFiltreStatut?' selected':'')+'>'+esc(x)+'</option>'; }).join("")+'</select></div>'
@@ -779,6 +803,7 @@
   function renderAdherents(){
     var r = adherentsRecherche.trim().toLowerCase();
     var liste = state.adherents.filter(function(a){
+      if(adherentsFiltreActifs && !a.actif) return false;
       return !r || [a.nom,a.prenom,a.email,a.tel,a.numero].join(" ").toLowerCase().indexOf(r) >= 0;
     }).sort(function(a,b){
       if(adherentsTri === "prenom") return (a.prenom||"").localeCompare(b.prenom||"","fr");
@@ -808,7 +833,8 @@
           + '<button class="btn-danger-ghost" data-action="refuser-candidature" data-id="'+c.id+'">Refuser</button></div></div>'; }).join("") + '</div>' : '';
     document.getElementById("panel-adherents").innerHTML = mailHtml + candHtml +
       '<div class="toolbar"><div><h2>Adhérents</h2><div class="toolbar-meta">'+state.adherents.length+' fiche(s)</div></div><button class="btn btn-primary" data-action="open-adherent">+ Ajouter un adhérent</button></div>'
-      + form + '<div class="field" style="max-width:420px"><label for="adh-recherche">Recherche</label><input type="search" id="adh-recherche" value="'+esc(adherentsRecherche)+'" placeholder="Nom, email, téléphone, n°…"></div>'
+      + form + (adherentsFiltreActifs ? '<div class="alert" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">Filtre actif : adhérents actifs seulement <button type="button" class="btn btn-ghost btn-sm" data-action="retirer-filtre-actifs">Retirer le filtre</button></div>' : '')
+      + '<div class="field" style="max-width:420px"><label for="adh-recherche">Recherche</label><input type="search" id="adh-recherche" value="'+esc(adherentsRecherche)+'" placeholder="Nom, email, téléphone, n°…"></div>'
       + (liste.length ? '<div class="table-scroll"><table class="tbl"><thead><tr>'
         + '<th><button class="th-tri'+(adherentsTri==="nom"?" active":"")+'" data-action="tri-adherents" data-tri="nom">Nom</button></th>'
         + '<th><button class="th-tri'+(adherentsTri==="prenom"?" active":"")+'" data-action="tri-adherents" data-tri="prenom">Prénom</button></th>'
@@ -1157,10 +1183,11 @@
       bV.delete(doc(db,"candidatures",cV.id));
       bV.commit().then(function(){
         logHistorique("candidature_validee", cV.prenom+" "+cV.nom);
-        mailAEnvoyer = { message: "Candidature de "+cV.prenom+" "+cV.nom+" validée : la fiche d'adhérent est créée.",
+        mailAEnvoyer = { message: "Candidature de "+cV.prenom+" "+cV.nom+" validée : la fiche d'adhérent est créée. Votre messagerie s'ouvre avec le message prêt à envoyer ; si elle ne s'est pas ouverte, utilisez le bouton ci-dessous.",
           href: "mailto:"+cV.email+"?subject="+encodeURIComponent("Votre candidature est validée — "+NOM_ASSOCIATION)
             +"&body="+encodeURIComponent("Bonjour "+cV.prenom+",\n\nVotre candidature comme adhérent à "+NOM_ASSOCIATION+" a été validée. Vous pouvez désormais vous identifier sur l'application (avec les mêmes prénom, nom et email que dans votre candidature), puis vous inscrire aux évènements.\n\nCordialement,\n"+moiNom) };
         renderAdherents();
+        ouvrirMessagerie(mailAEnvoyer.href);
       }).catch(reportError);
     }
     else if(a==="refuser-candidature"){
@@ -1261,8 +1288,17 @@
       if(!confirm("Retirer la catégorie « "+cat+" » de la liste proposée ?")) return;
       setDoc(doc(db,"parametres","config"), {categories: state.categories.filter(function(c){ return c !== cat; })}, {merge:true}).then(function(){ logHistorique("categories","Retrait : "+cat); }).catch(reportError);
     }
-    else if(a==="filtre-a-verifier"){ evenementsFiltreStatut = "À vérifier"; evenementsAvenirSeulement = false; evenementsMiens = true; recherchevide(); switchTab("evenements"); renderEvenements(); }
-    else if(a==="filtre-clotures-defaut"){ evenementsFiltreStatut = "Clôturé par défaut"; evenementsAvenirSeulement = false; evenementsMiens = false; recherchevide(); switchTab("evenements"); renderEvenements(); }
+    else if(a.indexOf("tuile-") === 0 && a !== "tuile-candidatures" && a !== "tuile-adherents-actifs"){
+      evenementsFiltreTuile = a.slice(6); evenementsFiltreStatut = ""; recherchevide();
+      evenementsAvenirSeulement = ["annulation","impayes"].indexOf(evenementsFiltreTuile) < 0; evenementsMiens = ["annulation","impayes"].indexOf(evenementsFiltreTuile) >= 0;
+      switchTab("evenements"); renderEvenements();
+    }
+    else if(a==="tuile-candidatures"){ adherentsFiltreActifs = false; adherentsRecherche = ""; switchTab("adherents"); renderAdherents(); var cc = document.getElementById("panel-adherents"); if(cc && cc.scrollIntoView) cc.scrollIntoView(); }
+    else if(a==="tuile-adherents-actifs"){ adherentsFiltreActifs = true; adherentsRecherche = ""; switchTab("adherents"); renderAdherents(); }
+    else if(a==="retirer-filtre-tuile"){ evenementsFiltreTuile = ""; evenementsAvenirSeulement = true; evenementsMiens = false; renderEvenements(); }
+    else if(a==="retirer-filtre-actifs"){ adherentsFiltreActifs = false; renderAdherents(); }
+    else if(a==="filtre-a-verifier"){ evenementsFiltreTuile = ""; evenementsFiltreStatut = "À vérifier"; evenementsAvenirSeulement = false; evenementsMiens = true; recherchevide(); switchTab("evenements"); renderEvenements(); }
+    else if(a==="filtre-clotures-defaut"){ evenementsFiltreTuile = ""; evenementsFiltreStatut = "Clôturé par défaut"; evenementsAvenirSeulement = false; evenementsMiens = false; recherchevide(); switchTab("evenements"); renderEvenements(); }
     else if(a==="delete-statut"){
       var stD = el.getAttribute("data-st");
       if(!confirm("Retirer le statut « "+stD+" » de la liste ? Les évènements qui l'utilisent déjà le gardent.")) return;
