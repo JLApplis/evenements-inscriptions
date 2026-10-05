@@ -145,7 +145,7 @@
   <div class="hero-inner">
     <div class="eyebrow" id="eyebrow">Association — Évènements</div>
     <h1 class="title">Évènements &amp; inscriptions</h1>
-    <p class="subtitle">Consultez les évènements proposés aux adhérents et inscrivez-vous, vous et vos accompagnants. Les places restantes sont mises à jour en direct.</p>
+    <p class="subtitle">Consultez les évènements proposés aux adhérents et inscrivez-vous (et, quand l'évènement le permet, vos accompagnants). Les places restantes sont mises à jour en direct.</p>
     <div class="status-line"><span class="status-dot" id="status-dot"></span><span id="status-text">Connexion à la base de données…</span></div>
     <div class="admin-row" id="admin-row"></div>
   </div>
@@ -212,7 +212,7 @@
   var CATEGORIES_DEFAUT = ["Sortie","Repas","Atelier","Assemblée","Spectacle"];
   var STATUTS = ["Ouvert","Clos","Annulé"];
 
-  var state = { adherents: [], evenements: [], inscriptions: [], gestionnaires: [], historique: [], mouvements: [], frais: [], fiches: [], categories: CATEGORIES_DEFAUT.slice() };
+  var state = { adherents: [], evenements: [], inscriptions: [], gestionnaires: [], historique: [], mouvements: [], frais: [], fiches: [], candidatures: [], categories: CATEGORIES_DEFAUT.slice() };
   var role = "public", moiNom = "", moiUid = null, moiAdherentId = null;
   var authReady = false;
   var currentTab = "evenements";
@@ -224,13 +224,16 @@
   var evenementsRecherche = "", evenementsFiltreStatut = "", evenementsAvenirSeulement = true;
   var historiqueRecherche = "";
   var equipeFormOpen = false, equipeErreur = "";
-  var avance = false, fraisErreur = "", recapAvenirSeulement = true, compteAdherentId = null, compteEvenementId = null, compteErreur = "", backfillEnCours = false;
-  var unsubFrais = null, unsubFiches = null, unsubMoi = null, unsubMoiAdherent = null, unsubMoiMouv = null, unsubMouvements = null, unsubAdherents = null, unsubGestionnaires = null, unsubHistorique = null;
+  var candidatureFormOpen = false, candidatureError = "", candidatureEnvoyee = false, mailAEnvoyer = null;
+  var fraisErreur = "", recapAvenirSeulement = true, compteAdherentId = null, compteEvenementId = null, compteErreur = "", backfillEnCours = false;
+  var unsubCandidatures = null, unsubFrais = null, unsubFiches = null, unsubMoi = null, unsubMoiAdherent = null, unsubMoiMouv = null, unsubMouvements = null, unsubAdherents = null, unsubGestionnaires = null, unsubHistorique = null;
   var unsubEvenements = null, unsubInscriptions = null, unsubParametres = null;
 
-  try{ avance = localStorage.getItem("evt-avance") === "1"; }catch(x){ avance = false; }
-  // Mode simple (par défaut) ou « Gestion avancée » : choix personnel de chaque gestionnaire, mémorisé sur son appareil.
-  function modeAvance(){ return role !== "public" && avance; }
+  // Mode simple (par défaut) ou « Gestion avancée » : réglage propre à chaque évènement (case cochée à sa création ou modification).
+  // Quand il est absent ou décoché, les finances de l'évènement (frais, budget, recettes, bilan) sont masquées ; les données déjà saisies sont conservées.
+  function modeAvance(ev){ return role !== "public" && !!ev && ev.gestionAvancee === true; }
+  function badgeAvance(ev){ return ev && ev.gestionAvancee === true ? ' <span class="badge warm">Gestion avancée</span>' : ''; }
+  function ilYAAvance(){ return state.evenements.some(function(e){ return e.gestionAvancee === true; }); }
 
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
   function fmtDate(iso){
@@ -251,6 +254,14 @@
 
   function inscriptionsDe(evId){ return state.inscriptions.filter(function(i){ return i.evenementId === evId; }); }
   function personnes(i){ return 1 + (i.nbAccompagnants||0); }
+  // Accompagnants : autorisés évènement par évènement (accompagnantsMax, 0 = non autorisés), chacun est enregistré par son nom.
+  function accMax(ev){ var n = parseInt(ev && ev.accompagnantsMax, 10); return n > 0 ? Math.min(10, n) : 0; }
+  function nomsAcc(i){ return Array.isArray(i.accompagnants) ? i.accompagnants : []; }
+  function parseNoms(txt){ return String(txt||"").split(/\n/).map(function(x){ return x.trim().slice(0,80); }).filter(Boolean); }
+  function texteAcc(i){
+    var n = nomsAcc(i), sans = (i.nbAccompagnants||0) - n.length;
+    return n.map(esc).join(", ") + (sans > 0 ? (n.length ? " + " : "") + sans + " sans nom" : "");
+  }
   function placesPrises(ev){
     return inscriptionsDe(ev.id).filter(function(i){ return i.statut === "inscrit"; }).reduce(function(s,i){ return s + personnes(i); }, 0);
   }
@@ -345,7 +356,7 @@
   function renderAdminRow(){
     var el = document.getElementById("admin-row");
     if(role !== "public"){
-      el.innerHTML = '<span class="admin-pill">Connecté : '+esc(moiNom)+' ('+(role==="directeur"?"Directeur":"Gestionnaire")+')</span><button class="link-btn" data-action="toggle-avance" title="Affiche les finances de l\'évènement et le récapitulatif">'+(avance?'☑':'☐')+' Gestion avancée</button><button class="link-btn" data-action="logout">Se déconnecter</button>';
+      el.innerHTML = '<span class="admin-pill">Connecté : '+esc(moiNom)+' ('+(role==="directeur"?"Directeur":"Gestionnaire")+')</span><button class="link-btn" data-action="logout">Se déconnecter</button>';
       return;
     }
     if(!loginFormOpen){ el.innerHTML = '<button class="link-btn" data-action="open-login">Connexion gestionnaire / Directeur</button>'; return; }
@@ -374,6 +385,7 @@
         var ev = evenementById(i.evenementId);
         if(ev && peutGerer(ev) && i.statut === "inscrit" && (ev.tarif||0) > 0 && etatPaiement(ev,i).reste > 0) impayes++;
       });
+      if(state.candidatures.length) tuiles.push(stat(state.candidatures.length, "Candidature"+(state.candidatures.length>1?"s":"")+" à valider (onglet Adhérents)", true));
       if(demandes) tuiles.push(stat(demandes, "Demande"+(demandes>1?"s":"")+" d'annulation", true));
       if(impayes) tuiles.push(stat(impayes, "Paiement"+(impayes>1?"s":"")+" en attente", true));
       var inscritsAvenir = 0, attenteAvenir = 0;
@@ -398,15 +410,21 @@
       var st = monInscription.statut === "attente" ? '<span class="badge warm">En liste d\'attente</span>' : '<span class="badge ok">✓ Vous êtes inscrit·e ('+personnes(monInscription)+' pers.)</span>';
       var ep = etatPaiement(ev, monInscription);
       var peutModifier = ev.statut === "Ouvert" && !evenementPasse(ev) && !monInscription.demandeAnnulation && authReady;
-      var nbAcc = monInscription.nbAccompagnants || 0;
-      var plusOk = peutModifier && nbAcc < 10 && (monInscription.statut === "attente" || restantes >= 1);
-      action = '<div>'+st+'</div>'
-        + '<div class="acc-ligne"><span>Accompagnants : <strong>'+nbAcc+'</strong></span>'
-        + (peutModifier ? '<div class="acc-btns">'
-          + '<button type="button" class="btn-acc btn-acc-plus" data-action="modifier-acc" data-id="'+monInscription.id+'" data-delta="1" '+(plusOk?'':'disabled')+'>+ Ajouter une personne</button>'
-          + '<button type="button" class="btn-acc btn-acc-moins" data-action="modifier-acc" data-id="'+monInscription.id+'" data-delta="-1" '+(nbAcc<=0?'disabled':'')+'>− Retirer une personne</button></div>' : '')
-        + '</div>'
-        + (peutModifier && monInscription.statut === "inscrit" && restantes < 1 ? '<div class="meta">Plus de place disponible pour ajouter quelqu\'un.</div>' : '')
+      var nbAcc = monInscription.nbAccompagnants || 0, maxAcc = accMax(ev), noms = nomsAcc(monInscription);
+      var plusOk = peutModifier && maxAcc > 0 && nbAcc < maxAcc && (monInscription.statut === "attente" || restantes >= 1);
+      var blocAcc = '';
+      if(maxAcc > 0 || nbAcc > 0){
+        blocAcc = '<div class="acc-ligne"><span>Accompagnants : <strong>'+nbAcc+'</strong>'+(maxAcc>0 ? ' (maximum '+maxAcc+')' : '')+'</span>'
+          + (peutModifier && maxAcc > 0 ? '<div class="acc-btns"><input type="text" id="acc-nom-'+monInscription.id+'" maxlength="80" placeholder="Prénom et nom de la personne" style="max-width:260px">'
+            + '<button type="button" class="btn-acc btn-acc-plus" data-action="modifier-acc" data-id="'+monInscription.id+'" data-delta="1" '+(plusOk?'':'disabled')+'>+ Ajouter une personne</button></div>' : '')
+          + noms.map(function(n, k){ return '<div class="acc-btns"><span>'+esc(n)+'</span>'
+              + (peutModifier ? '<button type="button" class="btn-acc btn-acc-moins" data-action="modifier-acc" data-id="'+monInscription.id+'" data-delta="-1" data-idx="'+k+'">− Retirer une personne</button>' : '')+'</div>'; }).join("")
+          + (nbAcc > noms.length ? '<div class="acc-btns"><span>'+(nbAcc-noms.length)+' personne(s) sans nom</span>'
+              + (peutModifier ? '<button type="button" class="btn-acc btn-acc-moins" data-action="modifier-acc" data-id="'+monInscription.id+'" data-delta="-1" data-idx="-1">− Retirer une personne</button>' : '')+'</div>' : '')
+          + '</div>';
+      }
+      action = '<div>'+st+'</div>' + blocAcc
+        + (peutModifier && maxAcc > 0 && nbAcc < maxAcc && monInscription.statut === "inscrit" && restantes < 1 ? '<div class="meta">Plus de place disponible pour ajouter quelqu\'un.</div>' : '')
         + ((ev.tarif||0)>0 && monInscription.statut==="inscrit" ? '<div class="meta">Montant : '+fmtEuro(ep.du)+' · Réglé : '+fmtEuro(ep.regle)+' · '
             + (ep.reste > 0 ? '<strong>Reste à régler : '+fmtEuro(ep.reste)+'</strong>' : (ep.reste < 0 ? '<strong>À vous rembourser : '+fmtEuro(-ep.reste)+'</strong>' : '<strong>Soldé</strong>'))+'</div>' : '')
         + (monInscription.demandeAnnulation ? '<div class="meta">Votre demande d\'annulation a été transmise.</div>'
@@ -414,8 +432,10 @@
     } else if(!moi.actif){
       action = '<div class="meta">Votre fiche est inactive : contactez l\'association.</div>';
     } else {
-      action = '<div class="field" style="margin:6px 0 0"><label for="acc-'+ev.id+'" style="font-weight:700;color:var(--ink)">Nombre d\'accompagnants (0 si vous venez seul·e)</label>'
-        + '<input type="number" min="0" max="10" value="0" id="acc-'+ev.id+'" style="width:90px"></div>'
+      action = (accMax(ev) > 0
+        ? '<div class="field" style="margin:6px 0 0"><label for="acc-'+ev.id+'" style="font-weight:700;color:var(--ink)">Accompagnants (facultatif) : un nom par ligne, maximum '+accMax(ev)+'</label>'
+          + '<textarea id="acc-'+ev.id+'" rows="2" placeholder="Prénom Nom"></textarea></div>'
+        : '')
         + '<div class="form-actions"><button class="btn btn-primary btn-sm" data-action="inscrire-moi" data-id="'+ev.id+'" '+(authReady?"":"disabled")+'>'+(restantes<=0 ? "Rejoindre la liste d'attente" : "M'inscrire")+'</button></div>';
     }
     return '<div class="card"><div class="head"><span class="badge">'+esc(ev.categorie||"")+'</span>'+badge+'</div>'
@@ -424,8 +444,27 @@
       + '<div class="meta">'+esc(ev.lieu)+'</div>'
       + (organisateurDe(ev) ? '<div class="meta">Organisé par <strong>'+esc(organisateurDe(ev))+'</strong></div>' : '')
       + '<div class="meta">'+((ev.tarif||0)>0 ? 'Tarif : '+fmtEuro(ev.tarif)+' par personne' : 'Gratuit')+'</div>'
+      + '<div class="meta">'+(accMax(ev)>0 ? 'Accompagnants acceptés : jusqu\'à '+accMax(ev)+' par inscrit' : 'Réservé aux adhérents (pas d\'accompagnants)')+'</div>'
       + (ev.description ? '<div class="meta">'+esc(ev.description)+'</div>' : '')
       + action + '</div>';
+  }
+
+  // Candidature d'un futur adhérent (même principe que BENEVOLES) : envoyée pour validation, elle ne crée pas la fiche.
+  function blocCandidature(){
+    if(candidatureEnvoyee){
+      return '<div class="card" style="margin-bottom:14px"><div class="ok-text" style="color:var(--success-soft-ink);font-weight:700">Candidature envoyée : elle sera examinée par la gestion de l\'association. Une fois validée, vous pourrez vous identifier ci-dessus (même prénom, nom et email) puis vous inscrire.</div>'
+        + '<div><button class="btn btn-sm" data-action="fermer-candidature">OK</button></div></div>';
+    }
+    if(candidatureFormOpen){
+      return '<form class="form card" id="form-candidature" style="margin-bottom:14px"><div class="section-title">Envoyer ma candidature</div><div class="field-row">'
+        + champ("Prénom","prenom","text","",true) + champ("Nom","nom","text","",true) + champ("Email","email","email","",true)
+        + '</div><div class="form-actions"><button type="submit" class="btn btn-primary" '+(authReady?"":"disabled")+'>Envoyer ma candidature</button>'
+        + '<button type="button" class="btn btn-ghost" data-action="cancel-candidature">Annuler</button>'
+        + (authReady ? '' : '<span class="form-hint">Connexion en cours…</span>')
+        + (candidatureError ? '<span class="error-text">'+esc(candidatureError)+'</span>' : '') + '</div></form>';
+    }
+    return '<div class="card" style="margin-bottom:14px"><div>Pas encore adhérent ? Envoyez votre candidature : la gestion la validera, puis vous pourrez vous inscrire.</div>'
+      + '<div><button class="btn btn-primary btn-sm" data-action="open-candidature">+ Envoyer ma candidature</button></div></div>';
   }
 
   function renderIdentite(){
@@ -435,14 +474,14 @@
       return '<div class="card" style="margin-bottom:14px"><div>Vous êtes identifié(e) comme <strong>'+esc(moi.prenom+" "+moi.nom)+'</strong>. <button class="link-btn" data-action="changer-identite">Ce n\'est pas vous ?</button></div></div>';
     }
     if(!identiteFormOpen){
-      return '<div class="card" style="margin-bottom:14px"><div>Identifiez-vous pour vous inscrire à un évènement.</div><div><button class="btn btn-sm" data-action="open-identite">Je m\'identifie</button></div></div>';
+      return '<div class="card" style="margin-bottom:14px"><div>Identifiez-vous pour vous inscrire à un évènement.</div><div><button class="btn btn-sm" data-action="open-identite">Je m\'identifie</button></div></div>' + blocCandidature();
     }
     return '<div class="card" style="margin-bottom:14px"><div>Les informations doivent correspondre à votre fiche d\'adhérent :</div>'
       + '<form class="form" id="form-identite"><div class="field-row">'
       + champ("Prénom","prenom","text","",true) + champ("Nom","nom","text","",true) + champ("Email","email","email","",true)
       + '</div><div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Valider</button>'
       + '<button type="button" class="btn btn-ghost btn-sm" data-action="cancel-identite">Annuler</button>'
-      + (identiteError ? '<span class="error-text">'+esc(identiteError)+'</span>' : '') + '</div></form></div>';
+      + (identiteError ? '<span class="error-text">'+esc(identiteError)+'</span>' : '') + '</div></form></div>' + blocCandidature();
   }
 
   function champ(label, name, type, value, required, extra){
@@ -473,7 +512,7 @@
       var dem = peutGerer(e) && inscriptionsDe(e.id).some(function(i){ return i.demandeAnnulation; });
       return '<tr class="clic" data-action="edit-evenement" data-id="'+e.id+'">'
         + '<td class="num">'+(e.numero||"—")+'</td><td><strong>'+fmtDateCourt(e.date)+'</strong><div class="meta">'+esc(e.debut)+'–'+esc(e.fin)+'</div></td>'
-        + '<td>'+esc(e.titre)+(dem?' <span class="badge warm">⚠ annulation</span>':'')+'<div class="meta">'+esc(e.lieu)+'</div></td>'
+        + '<td>'+esc(e.titre)+badgeAvance(e)+(dem?' <span class="badge warm">⚠ annulation</span>':'')+'<div class="meta">'+esc(e.lieu)+'</div></td>'
         + '<td>'+esc(e.categorie||"")+'</td>'
         + '<td>'+esc(organisateurDe(e)||"—")+(peutGerer(e)?'':' <span class="meta">(lecture)</span>')+'</td>'
         + '<td class="num"><span class="badge'+(placesRestantes(e)<=0?' low':'')+'">'+placesPrises(e)+' / '+e.placesTotal+'</span></td>'
@@ -481,6 +520,7 @@
         + '<td><span class="badge'+(e.statut==="Ouvert"?' ok':(e.statut==="Annulé"?' low':' warm'))+'">'+esc(e.statut)+'</span></td></tr>';
     }).join("");
     html = '<div class="toolbar"><h2>Évènements</h2><button class="btn btn-primary" data-action="open-evenement">+ Créer un évènement</button></div>'
+      + (state.candidatures.length ? '<div class="alert">⚠ '+state.candidatures.length+' candidature(s) d\'adhérent à valider : onglet Adhérents.</div>' : '')
       + (demandes ? '<div class="alert">⚠ '+demandes+' demande(s) d\'annulation en attente : ouvrez l\'évènement concerné pour les traiter.</div>' : '')
       + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">'
       + '<div class="field" style="min-width:240px"><label for="ev-recherche">Recherche</label><input type="search" id="ev-recherche" value="'+esc(evenementsRecherche)+'" placeholder="Titre, lieu, catégorie…"></div>'
@@ -500,7 +540,7 @@
     var cats = state.categories.slice(); if(ev && ev.categorie && cats.indexOf(ev.categorie) < 0) cats.push(ev.categorie);
     if(ev && !peutGerer(ev)){
       root.innerHTML = '<div class="modal-backdrop" data-action="close-modal"><div class="modal-box">'
-        + '<div class="modal-head"><h3>'+esc(ev.titre)+(ev.numero?" ("+numEv(ev)+")":"")+'</h3><button type="button" class="modal-close" data-action="cancel-modal" aria-label="Fermer">✕</button></div>'
+        + '<div class="modal-head"><h3>'+esc(ev.titre)+(ev.numero?" ("+numEv(ev)+")":"")+badgeAvance(ev)+'</h3><button type="button" class="modal-close" data-action="cancel-modal" aria-label="Fermer">✕</button></div>'
         + '<div class="modal-body"><div class="alert">Cette fiche est gérée par '+esc(organisateurDe(ev)||"son organisateur")+' : vous pouvez la consulter, mais pas la modifier.</div>'
         + '<div class="meta">'+fmtDate(ev.date)+' · '+esc(ev.debut)+'–'+esc(ev.fin)+'</div>'
         + '<div class="meta">'+esc(ev.lieu)+' · '+esc(ev.categorie||"")+' · '+esc(ev.statut)+'</div>'
@@ -512,15 +552,17 @@
     }
     function sel(label,name,opts,val){ return '<div class="field"><label for="f-'+name+'">'+label+'</label><select id="f-'+name+'" name="'+name+'">'+opts.map(function(o){ return '<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>'; }).join("")+'</select></div>'; }
     root.innerHTML = '<div class="modal-backdrop" data-action="close-modal"><div class="modal-box">'
-      + '<div class="modal-head"><h3>'+(ev?"Modifier l'évènement"+(ev.numero?" "+numEv(ev):""):"Créer un évènement")+'</h3><button type="button" class="modal-close" data-action="cancel-modal" aria-label="Fermer">✕</button></div>'
+      + '<div class="modal-head"><h3>'+(ev?"Modifier l'évènement"+(ev.numero?" "+numEv(ev):""):"Créer un évènement")+badgeAvance(ev)+'</h3><button type="button" class="modal-close" data-action="cancel-modal" aria-label="Fermer">✕</button></div>'
       + '<div class="modal-body"><form id="form-evenement">'
       + (ev ? '<div class="meta" style="margin-bottom:10px">Organisateur : <strong>'+esc(organisateurDe(ev)||"—")+'</strong></div>' : '')
       + champ("Titre","titre","text",ev?ev.titre:"",true)
       + '<div class="field-row">'+sel("Catégorie","categorie",cats,ev?ev.categorie:cats[0])+sel("Statut","statut",STATUTS,ev?ev.statut:"Ouvert")+'</div>'
       + '<div class="field-row">'+champ("Date","date","date",ev?ev.date:"",true)+champ("Lieu","lieu","text",ev?ev.lieu:"",true)+'</div>'
       + '<div class="field-row">'+champ("Début","debut","time",ev?ev.debut:"",true)+champ("Fin","fin","time",ev?ev.fin:"",true)
-      + champ("Places","placesTotal","number",ev?ev.placesTotal:"",true,'min="1" ')+champ("Tarif par personne (€, 0 = gratuit)","tarif","number",ev?(ev.tarif||0):0,true,'min="0" step="0.01" ')+'</div>'
+      + champ("Places","placesTotal","number",ev?ev.placesTotal:"",true,'min="1" ')+champ("Tarif par personne (€, 0 = gratuit)","tarif","number",ev?(ev.tarif||0):0,true,'min="0" step="0.01" ')
+      + champ("Accompagnants autorisés par inscrit (0 = aucun)","accompagnantsMax","number",ev?accMax(ev):0,true,'min="0" max="10" ')+'</div>'
       + '<div class="field"><label for="f-description">Description (visible par tous)</label><textarea id="f-description" name="description" rows="2">'+esc(ev?ev.description:"")+'</textarea></div>'
+      + '<label class="check" style="margin-bottom:10px"><input type="checkbox" name="gestionAvancee" '+(ev && ev.gestionAvancee===true?'checked':'')+'> Gestion avancée : finances de l\'évènement (frais engagés, budget, autres recettes, rappels, bilan imprimable)</label>'
       + (modalErreur ? '<div class="error-text" style="margin-bottom:8px">'+esc(modalErreur)+'</div>' : '')
       + '<div class="form-actions"><button type="submit" class="btn btn-primary" '+(authReady?"":"disabled")+'>💾 '+(ev?"Enregistrer":"Créer")+'</button>'
       + '<button type="button" class="btn btn-ghost" data-action="cancel-modal">Fermer</button>'
@@ -531,7 +573,7 @@
   }
 
   function formulaireFrais(){
-    if(!modeAvance()) return "";
+    if(!modeAvance(modalEvenementId ? evenementById(modalEvenementId) : null)) return "";
     var d = new Date(), p2 = function(n){ return String(n).padStart(2,"0"); };
     var auj = d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
     var ev = modalEvenementId ? evenementById(modalEvenementId) : null, fiche = ev ? ficheDe(ev.id) : null;
@@ -573,7 +615,7 @@
       var tarif = (ev.tarif||0) > 0;
       var ep = etatPaiement(ev, i), paye = ep.du > 0 && ep.reste <= 0;
       return '<div class="inscrit-row"><div><strong>'+esc(nomAdherent(a))+'</strong> '
-        + (i.nbAccompagnants ? '<span class="meta">+ '+i.nbAccompagnants+' accompagnant(s)</span> ' : '')
+        + (i.nbAccompagnants ? '<span class="meta">+ '+i.nbAccompagnants+' accompagnant(s) : '+texteAcc(i)+'</span> ' : '')
         + (i.statut==="attente" ? '<span class="badge warm">Liste d\'attente</span> ' : '')
         + (i.demandeAnnulation ? '<span class="badge low">⚠ Annulation demandée</span> ' : '')
         + (tarif && i.statut==="inscrit" ? '<span class="meta">· '+fmtEuro(ep.du)+(ep.reste>0 ? ' (reste '+fmtEuro(ep.reste)+')' : (ep.reste<0 ? ' (à rembourser '+fmtEuro(-ep.reste)+')' : ''))+'</span>' : '') + '</div>'
@@ -594,7 +636,7 @@
       .sort(function(a,b){ return nomAdherent(a).localeCompare(nomAdherent(b),"fr"); });
     var ajout = !gere ? '' : dispo.length
       ? '<div class="form-actions" style="margin-top:12px"><select id="sel-adherent">'+dispo.map(function(a){ return '<option value="'+a.id+'">'+esc(a.nom+" "+a.prenom)+'</option>'; }).join("")+'</select>'
-        + '<label class="check">Accompagnants <input type="number" id="sel-acc" min="0" max="10" value="0" style="width:60px"></label>'
+        + (accMax(ev) > 0 ? '<textarea id="sel-acc" rows="2" placeholder="Accompagnants (un nom par ligne, max '+accMax(ev)+')" style="min-width:220px"></textarea>' : '')
         + '<button type="button" class="btn btn-sm" data-action="inscrire-adherent" data-id="'+ev.id+'">Inscrire</button></div>'
       : '<div class="meta" style="margin-top:12px">Tous les adhérents actifs sont déjà inscrits.</div>';
     zone.innerHTML = '<div class="section-title">👥 Inscrits — '+placesPrises(ev)+' / '+ev.placesTotal+' places ('+(restantes<=0?'complet':restantes+' libre(s)')+')</div>'
@@ -606,7 +648,7 @@
     var zone = document.getElementById("finances-zone");
     if(!zone || !modalEvenementId) return;
     var ev = evenementById(modalEvenementId);
-    if(!ev || !peutGerer(ev) || !modeAvance()){ zone.innerHTML = ""; return; }
+    if(!ev || !peutGerer(ev) || !modeAvance(ev)){ zone.innerHTML = ""; return; }
     var b = bilanEvenement(ev);
     function tuile(l, v, c){ return '<div class="stat"><div class="stat-value '+(c||"")+'" style="font-size:1.3rem">'+v+'</div><div class="stat-label">'+l+'</div></div>'; }
     function table(liste, recette){
@@ -641,7 +683,7 @@
   }
 
   function imprimerBilan(evId){
-    var ev = evenementById(evId); if(!ev || !peutGerer(ev) || !modeAvance()) return;
+    var ev = evenementById(evId); if(!ev || !peutGerer(ev) || !modeAvance(ev)) return;
     var b = bilanEvenement(ev);
     var ins = inscriptionsDe(ev.id).slice().sort(function(x,y){
       if(x.statut !== y.statut) return x.statut === "inscrit" ? -1 : 1;
@@ -693,7 +735,15 @@
         + '<button class="btn btn-ghost btn-sm" data-action="toggle-actif" data-id="'+a.id+'">'+(a.actif?'Marquer inactif':'Marquer actif')+'</button>'
         + '<button class="btn-danger-ghost" data-action="delete-adherent" data-id="'+a.id+'">Supprimer</button></td></tr>';
     }).join("");
-    document.getElementById("panel-adherents").innerHTML =
+    var mailHtml = mailAEnvoyer ? '<div class="card" style="margin-bottom:14px"><div>'+esc(mailAEnvoyer.message)+'</div><div class="form-actions">'
+      + '<a class="btn btn-primary btn-sm" href="'+esc(mailAEnvoyer.href)+'" style="text-decoration:none">✉ Prévenir le candidat par email</a>'
+      + '<button type="button" class="btn btn-ghost btn-sm" data-action="fermer-mail">Fermer</button></div></div>' : '';
+    var candHtml = state.candidatures.length ? '<div class="card" style="margin-bottom:14px;border-left:4px solid var(--warm)"><div class="section-title">⚠ Candidatures à valider ('+state.candidatures.length+')</div>'
+      + state.candidatures.slice().sort(function(a,b){ return (a.creeLe&&a.creeLe.toMillis?a.creeLe.toMillis():0) - (b.creeLe&&b.creeLe.toMillis?b.creeLe.toMillis():0); }).map(function(c){
+        return '<div class="inscrit-row"><div><strong>'+esc(c.prenom+" "+c.nom)+'</strong> <span class="meta">'+esc(c.email)+'</span></div><div class="inscrit-actions">'
+          + '<button class="btn btn-primary btn-sm" data-action="valider-candidature" data-id="'+c.id+'" '+(authReady?"":"disabled")+'>Valider</button>'
+          + '<button class="btn-danger-ghost" data-action="refuser-candidature" data-id="'+c.id+'">Refuser</button></div></div>'; }).join("") + '</div>' : '';
+    document.getElementById("panel-adherents").innerHTML = mailHtml + candHtml +
       '<div class="toolbar"><div><h2>Adhérents</h2><div class="toolbar-meta">'+state.adherents.length+' fiche(s)</div></div><button class="btn btn-primary" data-action="open-adherent">+ Ajouter un adhérent</button></div>'
       + form + '<div class="field" style="max-width:420px"><label for="adh-recherche">Recherche</label><input type="search" id="adh-recherche" value="'+esc(adherentsRecherche)+'" placeholder="Nom, email, téléphone, n°…"></div>'
       + (liste.length ? '<div class="table-scroll"><table class="tbl"><thead><tr>'
@@ -705,7 +755,7 @@
 
   // ---------- récapitulatif Directeur : où en est-on, évènement par évènement ----------
   function renderRecap(){
-    var liste = state.evenements.filter(function(e){ return !recapAvenirSeulement || !evenementPasse(e); })
+    var liste = state.evenements.filter(function(e){ return e.gestionAvancee === true && (!recapAvenirSeulement || !evenementPasse(e)); })
       .sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
     var blocs = liste.map(function(ev){
       var ins = inscriptionsDe(ev.id).slice().sort(function(a,b){
@@ -805,7 +855,7 @@
   }
 
   // ---------- historique ----------
-  var ACTIONS = { budget:"Budget modifié", frais_ajout:"Frais ajouté", frais_suppression:"Frais supprimé", modif_accompagnants:"Accompagnants modifiés", reglement:"Règlement / remboursement enregistré", annulation_reglement:"Règlement annulé", creation_evenement:"Évènement créé", modification_evenement:"Évènement modifié", suppression_evenement:"Évènement supprimé",
+  var ACTIONS = { candidature_envoyee:"Candidature envoyée", candidature_validee:"Candidature validée", candidature_refusee:"Candidature refusée", budget:"Budget modifié", frais_ajout:"Frais ajouté", frais_suppression:"Frais supprimé", modif_accompagnants:"Accompagnants modifiés", reglement:"Règlement / remboursement enregistré", annulation_reglement:"Règlement annulé", creation_evenement:"Évènement créé", modification_evenement:"Évènement modifié", suppression_evenement:"Évènement supprimé",
     inscription_publique:"Inscription (adhérent)", inscription_gestion:"Inscription (gestion)", suppression_inscription:"Inscription retirée",
     promotion_attente:"Passé de l'attente à inscrit", demande_annulation:"Demande d'annulation", creation_adherent:"Adhérent ajouté",
     suppression_adherent:"Adhérent supprimé", ajout_equipe:"Compte gestion ajouté", categories:"Catégories modifiées" };
@@ -852,8 +902,9 @@
     var gestion = role !== "public";
     document.getElementById("tabs-bar").hidden = !gestion;
     document.getElementById("tab-parametres").hidden = role !== "directeur";
-    document.getElementById("tab-recap").hidden = !(role === "directeur" && avance);
-    if(!(role === "directeur" && avance) && currentTab === "recap") switchTab("evenements");
+    var recapOk = role === "directeur" && ilYAAvance();
+    document.getElementById("tab-recap").hidden = !recapOk;
+    if(!recapOk && currentTab === "recap") switchTab("evenements");
     if(!gestion && currentTab !== "evenements") switchTab("evenements");
     if(role !== "directeur" && currentTab === "parametres") switchTab("evenements");
   }
@@ -870,7 +921,7 @@
     if(!enSaisie){
       if(currentTab==="evenements") renderEvenements();
       if(currentTab==="adherents" && role!=="public") renderAdherents();
-      if(currentTab==="recap" && role==="directeur" && avance) renderRecap();
+      if(currentTab==="recap" && role==="directeur" && ilYAAvance()) renderRecap();
       if(currentTab==="historique" && role!=="public") renderHistorique();
       if(currentTab==="parametres" && role==="directeur") renderParametres();
     }
@@ -915,15 +966,38 @@
     else if(a==="changer-identite"){ moiAdherentId = null; try{ localStorage.removeItem("evt-moi"); }catch(x){} if(unsubMoiAdherent){ unsubMoiAdherent(); unsubMoiAdherent = null; } if(unsubMoiMouv){ unsubMoiMouv(); unsubMoiMouv = null; } state.adherents = []; state.mouvements = []; compteAdherentId = null; renderAll(); }
     else if(a==="inscrire-moi"){
       var champAcc = document.getElementById("acc-"+id);
-      var acc = Math.max(0, Math.min(10, parseInt(champAcc && champAcc.value,10) || 0));
-      inscrire(id, moiAdherentId, acc, "public");
+      inscrire(id, moiAdherentId, champAcc ? parseNoms(champAcc.value) : [], "public");
     }
     else if(a==="ouvrir-compte"){ compteAdherentId = id; compteEvenementId = el.getAttribute("data-ev") || null; compteErreur = ""; renderCompte(); }
     else if(a==="fermer-compte"){ compteAdherentId = null; compteErreur = ""; renderCompte(); }
     else if(a==="close-compte"){ if(e.target === el){ compteAdherentId = null; compteErreur = ""; renderCompte(); } }
-    else if(a==="toggle-avance"){
-      avance = !avance; try{ localStorage.setItem("evt-avance", avance ? "1" : "0"); }catch(x){}
-      renderAll(); if(modalOuverte) renderModal();
+    else if(a==="open-candidature"){ candidatureFormOpen = true; candidatureError = ""; renderEvenements(); }
+    else if(a==="cancel-candidature"){ candidatureFormOpen = false; candidatureError = ""; renderEvenements(); }
+    else if(a==="fermer-candidature"){ candidatureEnvoyee = false; renderEvenements(); }
+    else if(a==="fermer-mail"){ mailAEnvoyer = null; renderAdherents(); }
+    else if(a==="valider-candidature"){
+      var cV = state.candidatures.find(function(x){ return x.id === id; }); if(!cV || role === "public") return;
+      var bV = writeBatch(db);
+      bV.set(doc(db,"adherents",cV.id), { prenom: cV.prenom, nom: cV.nom, email: cV.email, tel: "", numero: "", actif: true, creeLe: serverTimestamp() });
+      bV.delete(doc(db,"candidatures",cV.id));
+      bV.commit().then(function(){
+        logHistorique("candidature_validee", cV.prenom+" "+cV.nom);
+        mailAEnvoyer = { message: "Candidature de "+cV.prenom+" "+cV.nom+" validée : la fiche d'adhérent est créée.",
+          href: "mailto:"+cV.email+"?subject="+encodeURIComponent("Votre candidature est validée — "+NOM_ASSOCIATION)
+            +"&body="+encodeURIComponent("Bonjour "+cV.prenom+",\n\nVotre candidature comme adhérent à "+NOM_ASSOCIATION+" a été validée. Vous pouvez désormais vous identifier sur l'application (avec les mêmes prénom, nom et email que dans votre candidature), puis vous inscrire aux évènements.\n\nCordialement,\n"+moiNom) };
+        renderAdherents();
+      }).catch(reportError);
+    }
+    else if(a==="refuser-candidature"){
+      var cR = state.candidatures.find(function(x){ return x.id === id; }); if(!cR || role === "public") return;
+      if(!confirm("Refuser la candidature de "+cR.prenom+" "+cR.nom+" ?")) return;
+      deleteDoc(doc(db,"candidatures",cR.id)).then(function(){
+        logHistorique("candidature_refusee", cR.prenom+" "+cR.nom);
+        mailAEnvoyer = { message: "Candidature de "+cR.prenom+" "+cR.nom+" refusée.",
+          href: "mailto:"+cR.email+"?subject="+encodeURIComponent("Votre candidature n'a pas pu être validée — "+NOM_ASSOCIATION)
+            +"&body="+encodeURIComponent("Bonjour "+cR.prenom+",\n\nNous n'avons pas pu valider votre candidature à "+NOM_ASSOCIATION+". N'hésitez pas à nous contacter ou à renvoyer votre candidature en vérifiant vos coordonnées.\n\nCordialement,\n"+moiNom) };
+        renderAdherents();
+      }).catch(reportError);
     }
     else if(a==="imprimer-bilan"){ imprimerBilan(id); }
     else if(a==="rappels-types"){
@@ -942,7 +1016,10 @@
       if(!confirm("Supprimer le frais « "+fS.libelle+" » ("+fmtEuro(fS.montant)+") ?")) return;
       deleteDoc(doc(db,"frais",id)).then(function(){ logHistorique("frais_suppression", (evS?evS.titre:"")+" — "+fS.libelle+" "+fmtEuro(fS.montant)); }).catch(reportError);
     }
-    else if(a==="modifier-acc"){ modifierAccompagnants(id, parseInt(el.getAttribute("data-delta"),10) || 0); }
+    else if(a==="modifier-acc"){
+      var champNom = document.getElementById("acc-nom-"+id);
+      modifierAccompagnants(id, parseInt(el.getAttribute("data-delta"),10) || 0, champNom ? champNom.value.trim().slice(0,80) : "", parseInt(el.getAttribute("data-idx"),10));
+    }
     else if(a==="demander-annulation"){
       var ins = state.inscriptions.find(function(i){ return i.id === id; });
       var ev0 = ins ? evenementById(ins.evenementId) : null, ad0 = ins ? adherentById(ins.adherentId) : null;
@@ -963,7 +1040,7 @@
     }
     else if(a==="inscrire-adherent"){
       var s = document.getElementById("sel-adherent"), c = document.getElementById("sel-acc");
-      if(s && s.value) inscrire(id, s.value, Math.max(0, Math.min(10, parseInt(c&&c.value,10)||0)), "gestion");
+      if(s && s.value) inscrire(id, s.value, c ? parseNoms(c.value) : [], "gestion");
     }
     else if(a==="promouvoir"){
       var i1 = state.inscriptions.find(function(x){ return x.id === id; }); var e1 = i1 && evenementById(i1.evenementId);
@@ -1006,7 +1083,7 @@
     else if(a==="cancel-equipe"){ equipeFormOpen = false; renderParametres(); }
     else if(a==="toggle-gestionnaire"){ var g = state.gestionnaires.find(function(x){ return x.id === id; }); if(g) updateDoc(doc(db,"gestionnaires",id), {actif: !g.actif}).catch(reportError); }
     else if(a==="export-json"){
-      var data = { exporteLe: new Date().toISOString(), categories: state.categories, adherents: state.adherents, evenements: state.evenements, inscriptions: state.inscriptions, mouvements: state.mouvements, frais: state.frais, fiches: state.fiches, historique: state.historique };
+      var data = { exporteLe: new Date().toISOString(), categories: state.categories, adherents: state.adherents, evenements: state.evenements, inscriptions: state.inscriptions, mouvements: state.mouvements, candidatures: state.candidatures, frais: state.frais, fiches: state.fiches, historique: state.historique };
       var url = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], {type:"application/json"}));
       var d = new Date(), p = function(n){ return String(n).padStart(2,"0"); };
       var lien = document.createElement("a"); lien.href = url;
@@ -1050,14 +1127,16 @@
     return setDoc(doc(db,"fiches",ev.id), { evenementId: ev.id, organisateurUid: ev.organisateurUid || "", rappels: liste }, {merge:true});
   }
 
-  function inscrire(evId, adhId, acc, origine){
+  function inscrire(evId, adhId, noms, origine){
     var ev = evenementById(evId), adh = adhId ? adherentById(adhId) : null;
     if(!ev || !adh) return;
+    var acc = noms.length;
+    if(acc > accMax(ev)){ alert(accMax(ev) > 0 ? "Cet évènement accepte au maximum "+accMax(ev)+" accompagnant(s)." : "Cet évènement n'accepte pas d'accompagnants."); return; }
     if(origine === "public" && (ev.statut !== "Ouvert" || evenementPasse(ev) || !adh.actif)) return;
     if(inscriptionsDe(evId).some(function(i){ return i.adherentId === adhId; })){ alert("Déjà inscrit à cet évènement."); return; }
     var statut = (1 + acc) <= placesRestantes(ev) ? "inscrit" : "attente";
     var batch = writeBatch(db);
-    batch.set(doc(collection(db,"inscriptions")), { evenementId: evId, adherentId: adhId, nbAccompagnants: acc, statut: statut,
+    batch.set(doc(collection(db,"inscriptions")), { evenementId: evId, adherentId: adhId, nbAccompagnants: acc, accompagnants: noms, statut: statut,
       present: false, paye: false, demandeAnnulation: false, creeLe: serverTimestamp() });
     ajouterMouvement(batch, ev, adhId, statut === "inscrit" ? "inscription" : "attente", 1 + acc, statut === "inscrit" ? (ev.tarif||0) * (1 + acc) : 0, origine);
     batch.commit().then(function(){
@@ -1069,21 +1148,29 @@
 
   // L'adhérent ajoute (+1) ou retire (-1) une personne sur sa propre inscription.
   // Limite connue (comme pour l'inscription) : la vérification des places se fait côté appli, sans transaction serveur.
-  function modifierAccompagnants(insId, delta){
+  function modifierAccompagnants(insId, delta, nom, idx){
     var i = state.inscriptions.find(function(x){ return x.id === insId; });
     var ev = i && evenementById(i.evenementId), adh = i && adherentById(i.adherentId);
     if(!i || !ev || !adh || (delta !== 1 && delta !== -1)) return;
     if(role === "public" && (i.adherentId !== moiAdherentId || ev.statut !== "Ouvert" || evenementPasse(ev) || i.demandeAnnulation)) return;
-    var nv = (i.nbAccompagnants||0) + delta;
-    if(nv < 0 || nv > 10) return;
-    if(delta > 0 && i.statut === "inscrit" && placesRestantes(ev) < 1){ alert("Il n'y a plus de place disponible."); return; }
+    var avant = i.nbAccompagnants||0, nv = avant + delta, noms = nomsAcc(i).slice(), libelle;
+    if(nv < 0) return;
+    if(delta > 0){
+      if(!nom){ alert("Indiquez le prénom et le nom de la personne à ajouter."); return; }
+      if(nv > accMax(ev)){ alert(accMax(ev) > 0 ? "Maximum "+accMax(ev)+" accompagnant(s) pour cet évènement." : "Cet évènement n'accepte pas d'accompagnants."); return; }
+      if(i.statut === "inscrit" && placesRestantes(ev) < 1){ alert("Il n'y a plus de place disponible."); return; }
+      noms.push(nom); libelle = "ajout de "+nom;
+    } else {
+      if(idx >= 0 && idx < noms.length){ libelle = "retrait de "+noms[idx]; noms.splice(idx, 1); }
+      else if(avant > noms.length){ libelle = "retrait d'une personne sans nom"; }
+      else return;
+    }
     var batch = writeBatch(db);
     avecReprise(batch, ev, i, "public");
-    batch.update(doc(db,"inscriptions",insId), { nbAccompagnants: nv });
-    ajouterMouvement(batch, ev, i.adherentId, delta > 0 ? "ajout" : "retrait", delta, i.statut === "inscrit" ? (ev.tarif||0) * delta : 0, "public",
-      "accompagnants : "+(i.nbAccompagnants||0)+" → "+nv);
+    batch.update(doc(db,"inscriptions",insId), { nbAccompagnants: nv, accompagnants: noms });
+    ajouterMouvement(batch, ev, i.adherentId, delta > 0 ? "ajout" : "retrait", delta, i.statut === "inscrit" ? (ev.tarif||0) * delta : 0, "public", libelle);
     batch.commit().then(function(){
-      logHistorique("modif_accompagnants", ev.titre+" — "+nomAdherent(adh)+" : "+(i.nbAccompagnants||0)+" → "+nv+" accompagnant(s)", nomAdherent(adh), "public");
+      logHistorique("modif_accompagnants", ev.titre+" — "+nomAdherent(adh)+" : "+libelle, nomAdherent(adh), "public");
     }).catch(reportError);
   }
 
@@ -1130,16 +1217,33 @@
         });
       }).catch(function(){ identiteError = "Connexion impossible, réessayez."; renderEvenements(); });
     }
+    else if(id === "form-candidature"){
+      e.preventDefault();
+      var fc = e.target, pc = fc.prenom.value.trim(), nc = fc.nom.value.trim(), mc = fc.email.value.trim();
+      if(!pc || !nc || !mc) return;
+      idAdherent(mc).then(function(hid){
+        return getDoc(doc(db,"adherents",hid)).then(function(ex){
+          if(ex.exists()){ candidatureError = "Cet email correspond déjà à un adhérent : utilisez « Je m'identifie »."; renderEvenements(); return; }
+          return setDoc(doc(db,"candidatures",hid), { prenom: pc, nom: nc, email: mc, creeLe: serverTimestamp() }).then(function(){
+            logHistorique("candidature_envoyee", pc+" "+nc, pc+" "+nc, "public");
+            candidatureEnvoyee = true; candidatureFormOpen = false; candidatureError = ""; renderEvenements();
+          }, function(){ candidatureError = "Une candidature existe déjà pour cet email, ou l'envoi a échoué. Contactez l'association."; renderEvenements(); });
+        });
+      }).catch(function(){ candidatureError = "Connexion impossible, réessayez."; renderEvenements(); });
+    }
     else if(id === "form-evenement"){
       e.preventDefault();
       var fe = e.target;
       var champs = { titre: fe.titre.value.trim(), categorie: fe.categorie.value, statut: fe.statut.value, date: fe.date.value, lieu: fe.lieu.value.trim(),
         debut: fe.debut.value, fin: fe.fin.value, placesTotal: Math.max(1, parseInt(fe.placesTotal.value,10)||1),
-        tarif: Math.max(0, parseFloat(fe.tarif.value)||0), description: fe.description.value.trim() };
+        tarif: Math.max(0, parseFloat(fe.tarif.value)||0), accompagnantsMax: Math.max(0, Math.min(10, parseInt(fe.accompagnantsMax.value,10)||0)), gestionAvancee: !!fe.gestionAvancee.checked,
+        description: fe.description.value.trim() };
       if(modalEvenementId){
         if(!peutGerer(evenementById(modalEvenementId))) return;
         var pris = placesPrises(evenementById(modalEvenementId));
         if(champs.placesTotal < pris){ modalErreur = "Impossible : "+pris+" place(s) déjà prises, on ne peut pas descendre en dessous."; renderModal(); return; }
+        var maxUtilise = inscriptionsDe(modalEvenementId).reduce(function(m,x){ return Math.max(m, x.nbAccompagnants||0); }, 0);
+        if(champs.accompagnantsMax < accMax(evenementById(modalEvenementId)) && champs.accompagnantsMax < maxUtilise){ modalErreur = "Impossible : un inscrit a déjà "+maxUtilise+" accompagnant(s)."; renderModal(); return; }
         updateDoc(doc(db,"evenements",modalEvenementId), champs).then(function(){ logHistorique("modification_evenement", champs.titre); fermerModal(); }).catch(reportError);
       } else {
         addDoc(collection(db,"evenements"), Object.assign({}, champs, {numero: state.evenements.reduce(function(m,e){ return Math.max(m, e.numero||0); }, 0) + 1, creePar: moiNom, organisateurUid: moiUid, organisateurNom: moiNom, creeLe: serverTimestamp()}))
@@ -1245,6 +1349,7 @@
     unsubAdherents = onSnapshot(collection(db,"adherents"), function(s){ state.adherents = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
     unsubGestionnaires = onSnapshot(collection(db,"gestionnaires"), function(s){ state.gestionnaires = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
     var refFrais = role === "directeur" ? collection(db,"frais") : query(collection(db,"frais"), where("organisateurUid","==",moiUid));
+    unsubCandidatures = onSnapshot(collection(db,"candidatures"), function(s){ state.candidatures = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
     var refFiches = role === "directeur" ? collection(db,"fiches") : query(collection(db,"fiches"), where("organisateurUid","==",moiUid));
     unsubFiches = onSnapshot(refFiches, function(s){ state.fiches = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
     unsubFrais = onSnapshot(refFrais, function(s){ state.frais = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
@@ -1252,8 +1357,8 @@
     unsubHistorique = onSnapshot(collection(db,"historique"), function(s){ state.historique = s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); }); renderAll(); }, function(){});
   }
   function detachRole(){
-    [unsubAdherents,unsubGestionnaires,unsubHistorique,unsubMouvements,unsubFrais,unsubFiches].forEach(function(u){ if(u) u(); });
-    unsubAdherents = unsubGestionnaires = unsubHistorique = unsubMouvements = unsubFrais = unsubFiches = null; state.frais = []; state.fiches = [];
+    [unsubAdherents,unsubGestionnaires,unsubHistorique,unsubMouvements,unsubFrais,unsubFiches,unsubCandidatures].forEach(function(u){ if(u) u(); });
+    unsubAdherents = unsubGestionnaires = unsubHistorique = unsubMouvements = unsubFrais = unsubFiches = unsubCandidatures = null; state.frais = []; state.fiches = []; state.candidatures = []; mailAEnvoyer = null;
     state.adherents = []; state.gestionnaires = []; state.historique = []; state.mouvements = []; compteAdherentId = null;
   }
   var publicAttache = false;
