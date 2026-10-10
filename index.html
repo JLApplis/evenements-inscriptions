@@ -92,10 +92,6 @@
   .card-title{font-family:Georgia,serif;font-size:1.1rem;font-weight:600}
   .meta{color:var(--ink-soft);font-size:.86rem}
   .head{display:flex;justify-content:space-between;gap:10px;align-items:center}
-  .card-code{font-weight:700;color:var(--accent-deep);font-size:.85rem}
-  .tags{display:flex;gap:6px;flex-wrap:wrap}
-  .barre-filtres{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
-  .id-boutons{display:flex;flex-wrap:wrap;gap:8px}
   .badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:.76rem;font-weight:700;white-space:nowrap;background:var(--accent-soft);color:var(--accent-soft-ink)}
   .badge.low{background:var(--danger-soft);color:var(--danger)}
   .badge.warm{background:var(--warm-soft);color:var(--warm-soft-ink)}
@@ -121,15 +117,12 @@
   .modal-body{padding:20px 24px 24px}
   .section-title{font-size:.78rem;font-weight:700;letter-spacing:.03em;color:var(--accent-deep);text-transform:uppercase;margin:16px 0 8px;border-top:1px solid var(--line);padding-top:14px}
   #print-root{display:none}
-  @page{margin:0}
   @media print{
     body > *:not(#print-root){display:none !important}
-    #print-root{display:block;padding:0 15mm;color:#000;background:#fff}
+    #print-root{display:block;padding:10mm;color:#000;background:#fff}
     #print-root table{width:100%;border-collapse:collapse;margin:6px 0 14px}
     #print-root th,#print-root td{border:1px solid #999;padding:4px 7px;font-size:11pt;text-align:left}
     #print-root .num{text-align:right}
-    #print-root table.pg, #print-root table.pg > thead > tr > td, #print-root table.pg > tfoot > tr > td, #print-root table.pg > tbody > tr > td{border:0;padding:0;margin:0;font-size:inherit}
-    #print-root .pg-marge{height:15mm}
     #print-root h1{font-size:18pt;margin:0 0 4px}#print-root h2{font-size:13pt;margin:14px 0 4px}
   }
   .acc-ligne{margin:6px 0}
@@ -150,8 +143,8 @@
 
 <div class="hero-wrap">
   <div class="hero-inner">
-    <div class="eyebrow" id="eyebrow">Association — Évènements</div>
-    <h1 class="title">Évènements &amp; inscriptions</h1>
+    <div class="eyebrow" id="version-appli"></div>
+    <h1 class="title">Les ami.es des Rancy</h1>
     <p class="subtitle">Consultez les évènements proposés aux adhérents et inscrivez-vous (et, quand l'évènement le permet, vos accompagnants). Les places restantes sont mises à jour en direct.</p>
     <div class="status-line"><span class="status-dot" id="status-dot"></span><span id="status-text">Connexion à la base de données…</span></div>
     <div class="admin-row" id="admin-row"></div>
@@ -190,6 +183,7 @@
 
   // ====== À REMPLIR : configuration de TON nouveau projet Firebase (voir LISEZ-MOI.md) ======
   const NOM_ASSOCIATION = "Mon association";
+  const VERSION_APPLI = "1.0";
   const firebaseConfig = {
     apiKey: "AIzaSyAClU986rgOr7uWWzKpQXl8NYZF6odxzoo",
     authDomain: "evenements-adherents.firebaseapp.com",
@@ -200,7 +194,7 @@
   };
   // =========================================================================================
 
-  document.getElementById("eyebrow").textContent = NOM_ASSOCIATION + " — Évènements";
+  document.getElementById("version-appli").textContent = "Version " + VERSION_APPLI;
   document.title = "Évènements — " + NOM_ASSOCIATION;
   document.getElementById("footer").textContent = NOM_ASSOCIATION + " — gestion des évènements.";
 
@@ -227,7 +221,6 @@
   var currentTab = "evenements";
   var loginFormOpen = false, loginError = "", loginInfo = "";
   var identiteFormOpen = false, identiteError = "";
-  var monHistoriqueOuvert = false, demandeSuppFormOpen = false, evenementsFiltreMesInscriptions = false;
   var importStatus = "", importError = false, reinitialisationStatus = "", reinitialisationError = false;
   var modalEvenementId = null, modalOuverte = false, modalErreur = "", modalCreeId = null, modalStatutBrouillon = null, modalJustifBrouillon = null, brouillon = { budget: null, frais: [], rappels: [] };
   var adherentFormOpen = false, adherentErreur = "";
@@ -263,14 +256,6 @@
     return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
   }
 
-  // Nom affiché aux autres adhérents : prénom + initiale du nom (« Marie D. »). Enregistré sur l'inscription elle-même (champ « affichage »),
-  // car un adhérent n'a pas le droit de lire les fiches des autres.
-  function affichageAdherent(a){
-    if(!a) return "";
-    var n = String(a.nom||"").trim();
-    return (String(a.prenom||"").trim() + (n ? " " + n.charAt(0).toUpperCase() + "." : "")).trim();
-  }
-
   function inscriptionsDe(evId){ return state.inscriptions.filter(function(i){ return i.evenementId === evId; }); }
   function personnes(i){ return 1 + (i.nbAccompagnants||0); }
   // Accompagnants : autorisés évènement par évènement (accompagnantsMax, 0 = non autorisés), chacun est enregistré par son nom.
@@ -288,6 +273,7 @@
   function illimite(ev){ return !(ev.placesTotal > 0); }
   function placesRestantes(ev){ return illimite(ev) ? Infinity : ev.placesTotal - placesPrises(ev); }
   function txtPlaces(ev){ return illimite(ev) ? placesPrises(ev)+' inscrit(s), places illimitées' : placesPrises(ev)+' / '+ev.placesTotal+' places'; }
+  function enAttente(ev){ return inscriptionsDe(ev.id).filter(function(i){ return i.statut === "attente"; }); }
   // Statuts : 4 statuts de base protégés + statuts ajoutés par le Directeur (Paramètres).
   function listeStatuts(){ return STATUTS_BASE.concat(state.statutsPerso.filter(function(x){ return STATUTS_BASE.indexOf(x) < 0; })); }
   function aujourdhuiIso(){ var d = new Date(), p2 = function(n){ return String(n).padStart(2,"0"); }; return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); }
@@ -442,10 +428,10 @@
       if(state.candidatures.length) tuiles.push(stat(state.candidatures.length, "Candidature"+(state.candidatures.length>1?"s":"")+" à valider (cliquer pour les voir)", true, "tuile-candidatures"));
       if(demandes) tuiles.push(stat(demandes, "Demande"+(demandes>1?"s":"")+" d'annulation (cliquer pour filtrer)", true, "tuile-annulation"));
       if(impayes) tuiles.push(stat(impayes, "Paiement"+(impayes>1?"s":"")+" en attente (cliquer pour filtrer)", true, "tuile-impayes"));
-      var inscritsAvenir = 0;
-      aVenirOuverts.forEach(function(e){ inscritsAvenir += placesPrises(e); });
+      var inscritsAvenir = 0, attenteAvenir = 0;
+      aVenirOuverts.forEach(function(e){ inscritsAvenir += placesPrises(e); attenteAvenir += enAttente(e).reduce(function(s,i){ return s+personnes(i); },0); });
       tuiles.push(stat(aVenirOuverts.length,"Évènements à venir",false,"tuile-avenir"), stat(placesLibres,"Places libres",false,"tuile-places"),
-        stat(inscritsAvenir,"Personnes inscrites (à venir)",false,"tuile-inscrits"),
+        stat(inscritsAvenir,"Personnes inscrites (à venir)",false,"tuile-inscrits"), stat(attenteAvenir,"Personnes en attente",false,"tuile-attente"),
         stat(state.adherents.filter(function(a){ return a.actif; }).length,"Adhérents actifs",false,"tuile-adherents-actifs"));
     }
     document.getElementById("stats").innerHTML = tuiles.join("");
@@ -461,11 +447,11 @@
     if(!moi){
       action = '<div class="meta">Identifiez-vous ci-dessus pour vous inscrire.</div>';
     } else if(monInscription){
-      var st = '<span class="badge ok">✓ Vous êtes inscrit·e ('+personnes(monInscription)+' pers.)</span>';
+      var st = monInscription.statut === "attente" ? '<span class="badge warm">En liste d\'attente</span>' : '<span class="badge ok">✓ Vous êtes inscrit·e ('+personnes(monInscription)+' pers.)</span>';
       var ep = etatPaiement(ev, monInscription);
       var peutModifier = ev.statut === "Ouvert" && !evenementPasse(ev) && !monInscription.demandeAnnulation && authReady;
       var nbAcc = monInscription.nbAccompagnants || 0, maxAcc = accMax(ev), noms = nomsAcc(monInscription);
-      var plusOk = peutModifier && maxAcc > 0 && nbAcc < maxAcc && restantes >= 1;
+      var plusOk = peutModifier && maxAcc > 0 && nbAcc < maxAcc && (monInscription.statut === "attente" || restantes >= 1);
       var blocAcc = '';
       if(maxAcc > 0 || nbAcc > 0){
         blocAcc = '<div class="acc-ligne"><span>Accompagnants : <strong>'+nbAcc+'</strong>'+(maxAcc>0 ? ' (maximum '+maxAcc+')' : '')+'</span>'
@@ -490,69 +476,17 @@
         ? '<div class="field" style="margin:6px 0 0"><label for="acc-'+ev.id+'" style="font-weight:700;color:var(--ink)">Accompagnants (facultatif) : un nom par ligne, maximum '+accMax(ev)+'</label>'
           + '<textarea id="acc-'+ev.id+'" rows="2" placeholder="Prénom Nom"></textarea></div>'
         : '')
-        + '<div class="form-actions"><button class="btn btn-primary btn-sm" data-action="inscrire-moi" data-id="'+ev.id+'" '+(authReady?"":"disabled")+'>M\'inscrire</button></div>';
+        + '<div class="form-actions"><button class="btn btn-primary btn-sm" data-action="inscrire-moi" data-id="'+ev.id+'" '+(authReady?"":"disabled")+'>'+(restantes<=0 ? "Rejoindre la liste d'attente" : "M'inscrire")+'</button></div>';
     }
-    var inscritsPub = '';
-    if(moi){
-      var lp = inscriptionsDe(ev.id).filter(function(i){ return i.statut === "inscrit"; }).map(function(i){
-        var nm = i.affichage || "un·e adhérent·e";
-        return '<span class="badge" style="background:var(--surface-2,#f1efe8);color:var(--ink)">'+esc(nm)+(i.nbAccompagnants ? ' +'+i.nbAccompagnants : '')+'</span>';
-      });
-      inscritsPub = '<div class="meta"><strong>Inscrits ('+lp.length+')</strong></div>'
-        + (lp.length ? '<div class="tags">'+lp.join("")+'</div>' : '<div class="meta">Personne d\'inscrit pour le moment.</div>');
-    }
-    var masquerBtn = (moi && !monInscription)
-      ? '<div class="id-boutons"><button type="button" class="btn btn-ghost btn-sm" data-action="masquer-evenement" data-id="'+ev.id+'" title="Ne plus afficher cet évènement">Masquer</button></div>' : '';
-    return '<div class="card"><div class="head"><span class="card-code">'+(ev.numero?'E'+ev.numero:'')+'</span>'+badge+'</div>'
-      + '<div class="card-title">'+esc(ev.titre)+'</div>'
+    return '<div class="card"><div class="head"><span class="badge">'+esc(ev.categorie||"")+'</span>'+badge+'</div>'
+      + '<div class="card-title">'+esc(ev.titre)+(ev.numero?' <span class="meta">('+numEv(ev)+')</span>':'')+'</div>'
       + '<div class="meta">'+fmtDate(ev.date)+' · '+esc(ev.debut)+'–'+esc(ev.fin)+'</div>'
       + '<div class="meta">'+esc(ev.lieu)+'</div>'
-      + (ev.categorie ? '<div class="tags"><span class="badge">'+esc(ev.categorie)+'</span></div>' : '')
-      + (ev.description ? '<div class="meta">'+esc(ev.description)+'</div>' : '')
       + (organisateurDe(ev) ? '<div class="meta">Organisé par <strong>'+esc(organisateurDe(ev))+'</strong></div>' : '')
       + '<div class="meta">'+((ev.tarif||0)>0 ? 'Tarif : '+fmtEuro(ev.tarif)+' par personne' : 'Gratuit')+'</div>'
       + '<div class="meta">'+(accMax(ev)>0 ? 'Accompagnants acceptés : jusqu\'à '+accMax(ev)+' par inscrit' : 'Réservé aux adhérents (pas d\'accompagnants)')+'</div>'
-      + inscritsPub + action + masquerBtn + '</div>';
-  }
-
-  // Évènements masqués par l'adhérent identifié : mémorisés dans son navigateur seulement (une clé par adhérent), aucune donnée en ligne.
-  function clefMasquees(){ return "evt-masquees-" + (moiAdherentId || ""); }
-  function chargerMasquees(){
-    if(!moiAdherentId) return {};
-    try{ var l = JSON.parse(localStorage.getItem(clefMasquees()) || "[]"), o = {}; if(Array.isArray(l)) l.forEach(function(x){ o[x] = true; }); return o; }catch(x){ return {}; }
-  }
-  function sauverMasquees(o){
-    if(!moiAdherentId) return;
-    try{ var ids = Object.keys(o); if(ids.length) localStorage.setItem(clefMasquees(), JSON.stringify(ids)); else localStorage.removeItem(clefMasquees()); }catch(x){}
-  }
-  function suisInscrit(evId){ return !!moiAdherentId && inscriptionsDe(evId).some(function(i){ return i.adherentId === moiAdherentId; }); }
-
-  // Historique personnel de l'adhérent identifié (lecture seule) : ses inscriptions et les lignes de son compte.
-  function historiquePersoHtml(moi){
-    var mes = state.inscriptions.filter(function(i){ return i.adherentId === moi.id; }).map(function(i){ return { i: i, ev: evenementById(i.evenementId) }; })
-      .sort(function(a,b){ return ((b.ev&&b.ev.date)||"").localeCompare((a.ev&&a.ev.date)||""); });
-    var lignes = mes.map(function(x){
-      var i = x.i, ev = x.ev, ep = ev && (ev.tarif||0) > 0 && i.statut === "inscrit" ? etatPaiement(ev, i) : null;
-      return '<tr><td>'+(ev ? fmtDateCourt(ev.date) : '—')+'</td><td>'+(ev ? esc(ev.titre) : '<em>(évènement supprimé)</em>')+'</td>'
-        + '<td>'+"Inscrit"+(i.demandeAnnulation ? ' (annulation demandée)' : '')+'</td><td class="num">'+personnes(i)+'</td>'
-        + '<td class="num">'+(ep ? fmtEuro(ep.du) : '—')+'</td><td class="num">'+(ep ? fmtEuro(ep.regle) : '—')+'</td></tr>';
-    }).join("");
-    var mv = state.mouvements.filter(function(m){ return m.adherentId === moi.id; }).sort(function(a,b){ return msDate(a) - msDate(b); });
-    var lm = mv.map(function(m){ return '<tr><td>'+fmtTs(m.date)+'</td><td>'+esc(m.libelle||"")+(m.evenementTitre?' <span class="meta">('+esc(m.evenementTitre)+')</span>':'')+'</td><td class="num">'+fmtEuro(m.montant)+'</td></tr>'; }).join("");
-    return '<div class="card" style="margin-bottom:14px"><div class="section-title">Mon historique — '+esc(moi.prenom+" "+moi.nom)+'</div>'
-      + (lignes ? '<div class="table-scroll"><table class="tbl"><thead><tr><th>Date</th><th>Évènement</th><th>Statut</th><th class="num">Pers.</th><th class="num">Dû</th><th class="num">Réglé</th></tr></thead><tbody>'+lignes+'</tbody></table></div>'
-        : '<div class="meta">Aucune inscription pour l\'instant.</div>')
-      + (lm ? '<div class="section-title">Mon compte</div><div class="table-scroll"><table class="tbl"><thead><tr><th>Date</th><th>Opération</th><th class="num">Montant</th></tr></thead><tbody>'+lm+'</tbody></table></div>'
-        + '<div class="meta">Solde : '+fmtEuro(soldeAdherent(moi.id))+' (positif = reste à régler)</div>' : '')
-      + '<div class="form-actions"><button type="button" class="btn btn-sm" data-action="imprimer-mon-historique">🖨 Imprimer mon historique</button>'
-      + '<button type="button" class="btn btn-ghost btn-sm" data-action="cancel-mon-historique">Fermer</button></div></div>';
-  }
-  function imprimerMonHistorique(){
-    var moi = moiAdherentId ? adherentById(moiAdherentId) : null; if(!moi) return;
-    var d = new Date();
-    document.getElementById("print-root").innerHTML = '<h1>'+esc(NOM_ASSOCIATION)+' — Mon historique</h1><div>'+esc(moi.prenom+" "+moi.nom)+' · édité le '+d.toLocaleDateString("fr-FR")+'</div>'
-      + historiquePersoHtml(moi).replace(/<div class="form-actions">.*?<\/div><\/div>$/, '</div>').replace(/<div class="section-title">Mon historique[^<]*<\/div>/, '');
-    habillerImpression(); window.print();
+      + (ev.description ? '<div class="meta">'+esc(ev.description)+'</div>' : '')
+      + action + '</div>';
   }
 
   // Candidature d'un futur adhérent (même principe que BENEVOLES) : envoyée pour validation, elle ne crée pas la fiche.
@@ -577,25 +511,7 @@
     if(role !== "public") return "";
     var moi = moiAdherentId ? adherentById(moiAdherentId) : null;
     if(moi){
-      var bandeauSupp = '';
-      if(demandeSuppFormOpen && !moi.demandeSuppression){
-        bandeauSupp = '<form class="form" id="form-demande-suppression" style="margin-top:10px"><div>Demander la suppression de votre fiche adhérent (<strong>'+esc(moi.prenom+" "+moi.nom)+'</strong>) : l\'association sera alertée et confirmera la suppression. Votre fiche reste en place tant qu\'elle n\'a pas répondu.</div>'
-          + '<div class="field"><label for="f-demande-supp-com">Commentaires <span class="form-hint">(motif, facultatif)</span></label><textarea id="f-demande-supp-com" name="commentaire" rows="2" maxlength="500"></textarea></div>'
-          + '<div class="form-actions"><button type="submit" class="btn btn-sm btn-primary" '+(authReady?"":"disabled")+'>Confirmer la demande</button>'
-          + '<button type="button" class="btn btn-ghost btn-sm" data-action="cancel-demande-suppression">Annuler</button></div></form>';
-      }
-      return '<div class="card" style="margin-bottom:14px"><div>Vous êtes identifié(e) comme <strong>'+esc(moi.prenom+" "+moi.nom)+'</strong>.</div>'
-        + '<div class="id-boutons">'
-        + '<button type="button" class="btn btn-sm" data-action="changer-identite">Ce n\'est pas vous ?</button>'
-        + '<button type="button" class="btn btn-sm" data-action="open-mon-historique">Voir mon historique</button>'
-        + (moi.demandeSuppression ? '' : '<button type="button" class="btn btn-sm" data-action="open-demande-suppression">Supprimer ma fiche</button>')
-        + (moi.pauseMails
-            ? '<button type="button" class="btn btn-sm btn-primary" data-action="desactiver-pause-mails">Recevoir à nouveau les mails</button>'
-            : '<button type="button" class="btn btn-sm" data-action="activer-pause-mails">Ne plus recevoir de mails de l\'application</button>')
-        + '</div>'
-        + (moi.demandeSuppression ? '<div class="form-hint">Demande de suppression envoyée, en attente de confirmation par l\'association.</div>' : '')
-        + (moi.pauseMails ? '<div class="form-hint">✉️ Vous ne recevez plus les mails de l\'application.</div>' : '')
-        + bandeauSupp + '</div>' + (monHistoriqueOuvert ? historiquePersoHtml(moi) : '');
+      return '<div class="card" style="margin-bottom:14px"><div>Vous êtes identifié(e) comme <strong>'+esc(moi.prenom+" "+moi.nom)+'</strong>. <button class="link-btn" data-action="changer-identite">Ce n\'est pas vous ?</button></div></div>';
     }
     if(!identiteFormOpen){
       return '<div class="card" style="margin-bottom:14px"><div>Identifiez-vous pour vous inscrire à un évènement.</div><div><button class="btn btn-sm" data-action="open-identite">Je m\'identifie</button></div></div>' + blocCandidature();
@@ -615,7 +531,7 @@
 
   function recherchevide(){ evenementsRecherche = ""; }
   var LIBELLES_TUILES = { annulation: "avec une demande d'annulation", impayes: "avec des paiements en attente", avenir: "à venir (ouverts)",
-    places: "à venir avec des places libres", inscrits: "à venir avec des inscrits" };
+    places: "à venir avec des places libres", inscrits: "à venir avec des inscrits", attente: "à venir avec des personnes en attente" };
   function ouvertAvenir(e){ return e.statut === "Ouvert" && !evenementPasse(e); }
   function tuileOk(e){
     switch(evenementsFiltreTuile){
@@ -624,6 +540,7 @@
       case "avenir": return ouvertAvenir(e);
       case "places": return ouvertAvenir(e) && !illimite(e) && placesRestantes(e) > 0;
       case "inscrits": return ouvertAvenir(e) && placesPrises(e) > 0;
+      case "attente": return ouvertAvenir(e) && enAttente(e).length > 0;
     }
     return true;
   }
@@ -638,26 +555,10 @@
   function renderEvenements(){
     var html;
     if(role === "public"){
-      // Seuls les évènements où il reste de la place sont proposés (comme BENEVOLES), plus ceux où l'adhérent identifié est déjà inscrit, même complets.
-      var visibles = state.evenements.filter(function(e){ return e.statut === "Ouvert" && !evenementPasse(e) && tuileOk(e) && (placesRestantes(e) > 0 || suisInscrit(e.id)); })
+      var visibles = state.evenements.filter(function(e){ return e.statut === "Ouvert" && !evenementPasse(e) && tuileOk(e); })
         .sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
-      var nbMasquees = 0, filtreMes = !!moiAdherentId && evenementsFiltreMesInscriptions;
-      if(moiAdherentId){
-        var masquees = chargerMasquees();
-        visibles = visibles.filter(function(e){
-          if(!masquees[e.id] || suisInscrit(e.id)) return true;
-          nbMasquees++; return false;
-        });
-        if(filtreMes) visibles = visibles.filter(function(e){ return suisInscrit(e.id); });
-      }
-      var barre = moiAdherentId
-        ? '<div class="barre-filtres"><button type="button" class="btn btn-ghost btn-sm" data-action="basculer-mes-inscriptions" aria-pressed="'+(filtreMes?"true":"false")+'">'+(filtreMes ? "Voir tous les évènements" : "Voir seulement mes évènements")+'</button>'
-          + '<button type="button" class="btn btn-ghost btn-sm" data-action="supprimer-filtres-evenements" '+((filtreMes || nbMasquees) ? '' : 'disabled')+'>Supprimer tous les filtres</button>'
-          + (nbMasquees && !filtreMes ? '<span class="form-hint">'+nbMasquees+' évènement'+(nbMasquees>1?'s':'')+' masqué'+(nbMasquees>1?'s':'')+' — <button type="button" class="link-btn" data-action="reafficher-evenements">Les réafficher</button></span>' : '')
-          + '</div>' : '';
-      html = '<div class="toolbar"><h2>Évènements</h2></div>' + renderIdentite() + barre + bandeauFiltreTuile()
-        + (visibles.length ? '<div class="card-grid">'+visibles.map(carteEvenementPublic).join("")+'</div>'
-          : (filtreMes ? '<div class="empty-state">Vous n\'êtes inscrit·e à aucun évènement pour le moment.</div>' : '<div class="empty-state">Aucun évènement proposé pour l\'instant.</div>'));
+      html = '<div class="toolbar"><h2>Évènements</h2></div>' + renderIdentite() + bandeauFiltreTuile()
+        + (visibles.length ? '<div class="card-grid">'+visibles.map(carteEvenementPublic).join("")+'</div>' : '<div class="empty-state">Aucun évènement proposé pour l\'instant.</div>');
       document.getElementById("panel-evenements").innerHTML = html;
       return;
     }
@@ -671,8 +572,8 @@
       return (e.titre||"").toLowerCase().indexOf(r) >= 0 || (e.lieu||"").toLowerCase().indexOf(r) >= 0 || (e.categorie||"").toLowerCase().indexOf(r) >= 0;
     }).sort(function(a,b){ return (a.date+a.debut).localeCompare(b.date+b.debut); });
     var demandes = state.inscriptions.filter(function(i){ return i.demandeAnnulation && peutGerer(evenementById(i.evenementId)); }).length;
-    var nbDemSupp = state.adherents.filter(function(a){ return a.demandeSuppression; }).length;
     var lignes = liste.map(function(e){
+      var att = enAttente(e).length;
       var dem = peutGerer(e) && inscriptionsDe(e.id).some(function(i){ return i.demandeAnnulation; });
       return '<tr class="clic" data-action="edit-evenement" data-id="'+e.id+'">'
         + '<td class="num">'+(e.numero||"—")+'</td><td><strong>'+fmtDateCourt(e.date)+'</strong><div class="meta">'+esc(e.debut)+'–'+esc(e.fin)+'</div></td>'
@@ -680,12 +581,11 @@
         + '<td>'+esc(e.categorie||"")+'</td>'
         + '<td>'+esc(organisateurDe(e)||"—")+(peutGerer(e)?'':' <span class="meta">(lecture)</span>')+'</td>'
         + '<td class="num"><span class="badge'+(placesRestantes(e)<=0?' low':'')+'">'+(illimite(e) ? placesPrises(e)+' (illimité)' : placesPrises(e)+' / '+e.placesTotal)+'</span></td>'
-        + '<td class="num">'+((e.tarif||0)>0?fmtEuro(e.tarif):'Gratuit')+'</td>'
+        + '<td class="num">'+att+'</td><td class="num">'+((e.tarif||0)>0?fmtEuro(e.tarif):'Gratuit')+'</td>'
         + '<td><span class="badge'+(statutAffiche(e)==="Ouvert"?' ok':(statutAffiche(e)==="Annulé"?' low':' warm'))+'">'+esc(statutAffiche(e))+'</span></td></tr>';
     }).join("");
     html = '<div class="toolbar"><h2>Évènements</h2><button class="btn btn-primary" data-action="open-evenement">+ Créer un évènement</button></div>'
       + (state.candidatures.length ? '<div class="alert">⚠ '+state.candidatures.length+' candidature(s) d\'adhérent à valider : onglet Adhérents.</div>' : '')
-      + (nbDemSupp ? '<div class="alert">⚠ '+nbDemSupp+' demande(s) de suppression de fiche adhérent : onglet Adhérents.</div>' : '')
       + (demandes ? '<div class="alert">⚠ '+demandes+' demande(s) d\'annulation en attente : ouvrez l\'évènement concerné pour les traiter.</div>' : '')
       + bandeauFiltreTuile()
       + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">'
@@ -693,7 +593,7 @@
       + '<div class="field"><label for="ev-statut">Statut</label><select id="ev-statut"><option value="">Tous</option>'+listeStatuts().map(function(x){ return '<option'+(x===evenementsFiltreStatut?' selected':'')+'>'+esc(x)+'</option>'; }).join("")+'</select></div>'
       + '<label class="check field" style="flex-direction:row;align-items:center"><input type="checkbox" id="ev-miens" '+(evenementsMiens?'checked':'')+'> Seulement ceux que je gère</label>'
       + '<label class="check field" style="flex-direction:row;align-items:center"><input type="checkbox" id="ev-avenir" '+(evenementsAvenirSeulement?'checked':'')+'> À venir seulement</label></div>'
-      + (liste.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th class="num">N°</th><th>Date</th><th>Évènement</th><th>Catégorie</th><th>Organisateur</th><th class="num">Inscrits / places</th><th class="num">Tarif</th><th>Statut</th></tr></thead><tbody>'+lignes+'</tbody></table></div>'
+      + (liste.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th class="num">N°</th><th>Date</th><th>Évènement</th><th>Catégorie</th><th>Organisateur</th><th class="num">Inscrits / places</th><th class="num">Attente</th><th class="num">Tarif</th><th>Statut</th></tr></thead><tbody>'+lignes+'</tbody></table></div>'
         : '<div class="empty-state">Aucun évènement ne correspond.</div>');
     document.getElementById("panel-evenements").innerHTML = html;
   }
@@ -715,7 +615,7 @@
         + '<div class="meta">'+((ev.tarif||0)>0 ? 'Tarif : '+fmtEuro(ev.tarif)+' par personne' : 'Gratuit')+'</div>'
         + (ev.description ? '<div class="meta">'+esc(ev.description)+'</div>' : '')
         + '<div id="inscrits-zone"></div>'
-        + '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="imprimer-evenement" data-id="'+ev.id+'">🖨 Imprimer cet évènement</button><button type="button" class="btn btn-ghost" data-action="cancel-modal">Fermer</button></div></div></div></div>';
+        + '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="cancel-modal">Fermer</button></div></div></div></div>';
       renderInscritsZone(); return;
     }
     var stSel = ev ? (modalStatutBrouillon || statutAffiche(ev)) : "Ouvert";
@@ -743,7 +643,6 @@
       + (modalErreur ? '<div class="error-text" style="margin-bottom:8px">'+esc(modalErreur)+'</div>' : '')
       + '<div class="form-actions"><button type="submit" class="btn btn-primary" '+(authReady?"":"disabled")+'>💾 '+(ev?"Enregistrer":"Créer")+'</button>'
       + '<button type="button" class="btn btn-ghost" data-action="cancel-modal">Fermer</button>'
-      + (ev ? '<button type="button" class="btn btn-ghost" data-action="imprimer-evenement" data-id="'+ev.id+'">🖨 Imprimer cet évènement</button>' : '')
       + (ev && role==="directeur" ? '<button type="button" class="btn-danger-ghost" data-action="delete-evenement" data-id="'+ev.id+'">Supprimer l\'évènement</button>' : '')
       + '</div></form>'
       + (ev ? '<div id="inscrits-zone"></div>' : '') + '<div id="finances-bloc"'+(ev && ev.gestionAvancee===true ? '' : ' hidden')+'><div id="finances-zone"></div>' + formulaireFrais() + '</div></div></div></div>';
@@ -793,12 +692,14 @@
       var ep = etatPaiement(ev, i), paye = ep.du > 0 && ep.reste <= 0;
       return '<div class="inscrit-row"><div><strong>'+esc(nomAdherent(a))+'</strong> '
         + (i.nbAccompagnants ? '<span class="meta">+ '+i.nbAccompagnants+' accompagnant(s) : '+texteAcc(i)+'</span> ' : '')
+        + (i.statut==="attente" ? '<span class="badge warm">Liste d\'attente</span> ' : '')
         + (i.demandeAnnulation ? '<span class="badge low">⚠ Annulation demandée</span> ' : '')
         + (tarif && i.statut==="inscrit" ? '<span class="meta">· '+fmtEuro(ep.du)+(ep.reste>0 ? ' (reste '+fmtEuro(ep.reste)+')' : (ep.reste<0 ? ' (à rembourser '+fmtEuro(-ep.reste)+')' : ''))+'</span>' : '') + '</div>'
         + '<div class="inscrit-actions">'
         + (gere ? (
           (i.statut==="inscrit" ? '<label class="check"><input type="checkbox" data-action="toggle-present" data-id="'+i.id+'" '+(i.present?'checked':'')+'> Présent</label>' : '')
           + (i.statut==="inscrit" && tarif ? '<label class="check"><input type="checkbox" data-action="toggle-paye" data-id="'+i.id+'" '+(paye?'checked':'')+'> Payé</label>' : '')
+          + (i.statut==="attente" ? '<button type="button" class="btn btn-sm" data-action="promouvoir" data-id="'+i.id+'">Passer en inscrit</button>' : '')
           + (i.demandeAnnulation ? '<button type="button" class="link-btn" data-action="ignorer-annulation" data-id="'+i.id+'">Ignorer</button>' : '')
           + (i.statut==="inscrit" && tarif ? '<button type="button" class="btn btn-ghost btn-sm" data-action="ouvrir-compte" data-id="'+i.adherentId+'" data-ev="'+ev.id+'">💶 Versement</button>' : '')
           + '<button type="button" class="btn-danger-ghost" data-action="retirer" data-id="'+i.id+'">Retirer</button>'
@@ -869,13 +770,6 @@
       + '<div class="form-actions" style="margin-top:8px"><button type="button" class="btn btn-ghost btn-sm" data-action="imprimer-bilan" data-id="'+ev.id+'">🖨 Imprimer / PDF le bilan</button></div>';
   }
 
-  // Marge de 15 mm en haut et en bas de CHAQUE page imprimée (@page à 0 pour supprimer en-tête/pied de page du navigateur) :
-  // le contenu est enveloppé dans un tableau dont l'en-tête et le pied (vides) se répètent sur toutes les pages.
-  function habillerImpression(){
-    var r = document.getElementById("print-root");
-    r.innerHTML = '<table class="pg"><thead><tr><td><div class="pg-marge"></div></td></tr></thead><tbody><tr><td>'+r.innerHTML+'</td></tr></tbody><tfoot><tr><td><div class="pg-marge"></div></td></tr></tfoot></table>';
-  }
-
   function imprimerBilan(evId){
     var ev = evenementById(evId); if(!ev || !peutGerer(ev) || !modeAvance(ev)) return;
     var b = bilanEvenement(ev);
@@ -886,7 +780,7 @@
     var fr = lignesFrais(b.frais, false), rc = lignesFrais(b.recettes, true);
     var rap = b.rappels.filter(function(r){ return !r.fait; }).map(function(r){ return '<li>'+esc(r.texte)+'</li>'; }).join("");
     var lg = ins.map(function(i){ var ep = etatPaiement(ev,i), act = i.statut === "inscrit";
-      return '<tr><td>'+esc(nomAdherent(adherentById(i.adherentId)))+'</td><td class="num">'+personnes(i)+'</td><td class="num">'+(act?fmtEuro(ep.du):'—')+'</td><td class="num">'+(act?fmtEuro(ep.regle):'—')+'</td><td class="num">'+(act?fmtEuro(ep.reste):'—')+'</td></tr>'; }).join("");
+      return '<tr><td>'+esc(nomAdherent(adherentById(i.adherentId)))+(act?'':' (attente)')+'</td><td class="num">'+personnes(i)+'</td><td class="num">'+(act?fmtEuro(ep.du):'—')+'</td><td class="num">'+(act?fmtEuro(ep.regle):'—')+'</td><td class="num">'+(act?fmtEuro(ep.reste):'—')+'</td></tr>'; }).join("");
     var d = new Date();
     document.getElementById("print-root").innerHTML = '<h1>'+esc(NOM_ASSOCIATION)+' — Bilan de l\'évènement</h1>'
       + '<div><strong>'+(ev.numero?numEv(ev)+' — ':'')+esc(ev.titre)+'</strong> · '+fmtDateCourt(ev.date)+' · '+esc(ev.lieu)+' · Organisateur : '+esc(organisateurDe(ev)||"—")+'</div>'
@@ -903,69 +797,6 @@
       + (rc ? '<h2>Autres recettes</h2><table><thead><tr><th>Date</th><th>Recette</th><th>Catégorie</th><th class="num">Montant</th><th>État</th></tr></thead><tbody>'+rc+'</tbody></table>' : '')
       + (rap ? '<h2>Rappels restant à traiter</h2><ul>'+rap+'</ul>' : '')
       + '<h2>Inscrits</h2>' + (lg ? '<table><thead><tr><th>Nom</th><th class="num">Pers.</th><th class="num">Dû</th><th class="num">Versé</th><th class="num">Reste</th></tr></thead><tbody>'+lg+'</tbody></table>' : '<div>Aucun inscrit.</div>');
-    habillerImpression();
-    window.print();
-  }
-
-  // Compte rendu détaillé d'un évènement (tout gestionnaire / Directeur). Les finances (frais, budget, bilan) n'y figurent que pour l'organisateur et le Directeur.
-  function imprimerEvenement(evId){
-    var ev = evenementById(evId); if(!ev || role === "public") return;
-    var tarif = ev.tarif || 0, avecFin = peutGerer(ev) && modeAvance(ev);
-    var tri = function(x,y){ return nomAdherent(adherentById(x.adherentId)).localeCompare(nomAdherent(adherentById(y.adherentId)), "fr"); };
-    var ins = inscriptionsDe(ev.id), inscrits = ins.filter(function(i){ return i.statut === "inscrit"; }).sort(tri);
-    var nbPers = inscrits.reduce(function(sm,i){ return sm + personnes(i); }, 0), nbAcc = inscrits.reduce(function(sm,i){ return sm + (i.nbAccompagnants||0); }, 0);
-    var nbPres = inscrits.filter(function(i){ return i.present; }).reduce(function(sm,i){ return sm + personnes(i); }, 0);
-    var nbDem = ins.filter(function(i){ return i.demandeAnnulation; }).length;
-    var tDu = 0, tRegle = 0, tReste = 0;
-    var lg = inscrits.map(function(i, n){
-      var a = adherentById(i.adherentId) || {}, ep = etatPaiement(ev, i);
-      tDu += ep.du; tRegle += ep.regle; tReste += Math.max(0, ep.reste);
-      return '<tr><td class="num">'+(n+1)+'</td><td>'+esc(nomAdherent(a))+(i.demandeAnnulation?' <em>(annulation demandée)</em>':'')+'</td><td>'+esc(a.tel||"")+'</td>'
-        + '<td>'+(texteAcc(i)||'—')+'</td><td class="num">'+personnes(i)+'</td><td>'+(i.present?'Oui':'')+'</td>'
-        + (tarif > 0 ? '<td class="num">'+fmtEuro(ep.du)+'</td><td class="num">'+fmtEuro(ep.regle)+'</td><td class="num">'+fmtEuro(ep.reste)+'</td>' : '') + '</tr>';
-    }).join("");
-    var d = new Date();
-    var h = '<h1>'+esc(NOM_ASSOCIATION)+' — Compte rendu de l\'évènement</h1>'
-      + '<div><strong>'+(ev.numero?numEv(ev)+' — ':'')+esc(ev.titre)+'</strong></div>'
-      + '<div>Édité le '+d.toLocaleDateString("fr-FR")+' à '+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})+' par '+esc(moiNom)+'</div>'
-      + '<h2>Informations générales</h2><table><tbody>'
-      + '<tr><td>Date et horaires</td><td>'+fmtDate(ev.date)+' · '+esc(ev.debut||"")+' – '+esc(ev.fin||"")+'</td></tr>'
-      + '<tr><td>Lieu</td><td>'+esc(ev.lieu||"—")+'</td></tr>'
-      + '<tr><td>Catégorie</td><td>'+esc(ev.categorie||"—")+'</td></tr>'
-      + '<tr><td>Statut</td><td>'+esc(statutAffiche(ev))+(ev.statut === "Clôturé par défaut" && ev.justificationCloture ? ' — justification : '+esc(ev.justificationCloture) : '')+'</td></tr>'
-      + '<tr><td>Organisateur</td><td>'+esc(organisateurDe(ev)||"—")+'</td></tr>'
-      + '<tr><td>Tarif</td><td>'+(tarif > 0 ? fmtEuro(tarif)+' par personne' : 'Gratuit')+'</td></tr>'
-      + '<tr><td>Places</td><td>'+txtPlaces(ev)+(illimite(ev) ? '' : ' · restantes : '+placesRestantes(ev))+'</td></tr>'
-      + '<tr><td>Accompagnants</td><td>'+(accMax(ev) ? 'jusqu\'à '+accMax(ev)+' par inscrit' : 'non autorisés')+'</td></tr>'
-      + (ev.description ? '<tr><td>Description</td><td>'+esc(ev.description)+'</td></tr>' : '')
-      + '</tbody></table>'
-      + '<h2>Participation</h2><table><tbody>'
-      + '<tr><td>Inscrits</td><td class="num">'+inscrits.length+'</td><td>dont '+nbAcc+' accompagnant(s) · '+nbPers+' personne(s) au total</td></tr>'
-      + '<tr><td>Présents le jour J</td><td class="num">'+nbPres+'</td><td>personne(s) pointée(s) présente(s)</td></tr>'
-      + (nbDem ? '<tr><td>Demandes d\'annulation</td><td class="num">'+nbDem+'</td><td>à traiter</td></tr>' : '')
-      + '</tbody></table>'
-      + '<h2>Inscrits</h2>' + (lg ? '<table><thead><tr><th class="num">N°</th><th>Nom</th><th>Téléphone</th><th>Accompagnants</th><th class="num">Pers.</th><th>Présent</th>'
-        + (tarif > 0 ? '<th class="num">Dû</th><th class="num">Versé</th><th class="num">Reste</th>' : '') + '</tr></thead><tbody>'+lg
-        + (tarif > 0 ? '<tr><td colspan="6"><strong>Totaux</strong></td><td class="num"><strong>'+fmtEuro(tDu)+'</strong></td><td class="num"><strong>'+fmtEuro(tRegle)+'</strong></td><td class="num"><strong>'+fmtEuro(tReste)+'</strong></td></tr>' : '')
-        + '</tbody></table>' : '<div>Aucun inscrit.</div>')
-      ;
-    if(avecFin){
-      var b = bilanEvenement(ev);
-      var ligne = function(f, recette){ return '<tr><td>'+fmtDateCourt(f.date)+'</td><td>'+esc(f.libelle)+(f.fournisseur?' ('+esc(f.fournisseur)+')':'')+(f.reference?' — réf. '+esc(f.reference):'')+'</td><td>'+esc(f.categorie||"")+'</td><td class="num">'+fmtEuro(f.montant)+'</td><td>'+(f.statut==="paye"?(recette?'Reçue':'Payé'):(recette?'Attendue':'À payer'))+'</td></tr>'; };
-      var ent = '<thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th class="num">Montant</th><th>État</th></tr></thead>';
-      var rap = b.rappels.filter(function(r){ return !r.fait; }).map(function(r){ return '<li>'+esc(r.texte)+'</li>'; }).join("");
-      h += '<h2>Finances</h2><table><tbody>'
-        + '<tr><td>Frais engagés</td><td class="num">'+fmtEuro(b.engage)+'</td><td>dont payés '+fmtEuro(b.fraisPayes)+' · reste à payer '+fmtEuro(b.fraisAPayer)+'</td></tr>'
-        + (b.budget !== null ? '<tr><td>Budget prévu</td><td class="num">'+fmtEuro(b.budget)+'</td><td>'+(b.ecartBudget<0?'dépassement de '+fmtEuro(-b.ecartBudget):'reste sur le budget : '+fmtEuro(b.ecartBudget))+'</td></tr>' : '')
-        + ((b.recettesRecues||b.recettesAttendues) ? '<tr><td>Autres recettes</td><td class="num">'+fmtEuro(b.recettesRecues)+'</td><td>reçues · attendues '+fmtEuro(b.recettesAttendues)+'</td></tr>' : '')
-        + '<tr><td>Encaissé des inscrits</td><td class="num">'+fmtEuro(b.regle)+'</td><td>reste à encaisser '+fmtEuro(b.resteEncaisser)+'</td></tr>'
-        + '<tr><td><strong>Résultat actuel</strong></td><td class="num"><strong>'+fmtEuro(b.resultat)+'</strong></td><td>résultat si tout est encaissé : '+fmtEuro(b.previsionnel)+' · coût par personne : '+fmtEuro(b.coutParPersonne)+'</td></tr></tbody></table>'
-        + (b.frais.length ? '<h2>Frais engagés</h2><table>'+ent+'<tbody>'+b.frais.map(function(f){ return ligne(f,false); }).join("")+'</tbody></table>' : '')
-        + (b.recettes.length ? '<h2>Autres recettes</h2><table>'+ent+'<tbody>'+b.recettes.map(function(f){ return ligne(f,true); }).join("")+'</tbody></table>' : '')
-        + (rap ? '<h2>Rappels restant à traiter</h2><ul>'+rap+'</ul>' : '');
-    }
-    document.getElementById("print-root").innerHTML = h;
-    habillerImpression();
     window.print();
   }
 
@@ -987,12 +818,9 @@
       + (adherentErreur ? '<span class="error-text">'+esc(adherentErreur)+'</span>' : '') + '</div></form>' : '';
     var lignes = liste.map(function(a){
       var nbIns = state.inscriptions.filter(function(i){ return i.adherentId === a.id; }).length;
-      var flags = (a.demandeSuppression ? ' <span class="badge warm" title="'+esc(a.demandeSuppressionCommentaire||"")+'">⚠ Demande de suppression</span>' : '')
-        + (a.pauseMails ? ' <span class="badge" title="Ne souhaite plus recevoir de mails">✉ Plus de mails</span>' : '');
-      return '<tr><td>'+esc(a.nom)+(a.actif?'':' <span class="badge low">Inactif</span>')+flags+'</td><td>'+esc(a.prenom)+'</td><td>'+esc(a.email)+'</td><td>'+esc(a.tel||"—")+'</td>'
+      return '<tr><td>'+esc(a.nom)+(a.actif?'':' <span class="badge low">Inactif</span>')+'</td><td>'+esc(a.prenom)+'</td><td>'+esc(a.email)+'</td><td>'+esc(a.tel||"—")+'</td>'
         + '<td>'+esc(a.numero||"—")+'</td><td class="num">'+nbIns+'</td><td style="white-space:nowrap">'
         + '<button class="btn btn-ghost btn-sm" data-action="ouvrir-compte" data-id="'+a.id+'">📒 Compte</button> '
-        + (a.demandeSuppression && role === "directeur" ? '<button class="btn btn-ghost btn-sm" data-action="conserver-fiche" data-id="'+a.id+'">Conserver la fiche</button> ' : '')
         + '<button class="btn btn-ghost btn-sm" data-action="toggle-actif" data-id="'+a.id+'">'+(a.actif?'Marquer inactif':'Marquer actif')+'</button>'
         + '<button class="btn-danger-ghost" data-action="delete-adherent" data-id="'+a.id+'">Supprimer</button></td></tr>';
     }).join("");
@@ -1028,16 +856,17 @@
       var lignes = ins.map(function(i){
         var ep = etatPaiement(ev, i), actif = i.statut === "inscrit";
         if(actif){ totDu += ep.du; totRegle += ep.regle; totReste += ep.reste; }
-        return '<tr><td>'+esc(nomAdherent(adherentById(i.adherentId)))+'</td>'
+        return '<tr><td>'+esc(nomAdherent(adherentById(i.adherentId)))+(actif?'':' <span class="badge warm">Attente</span>')+'</td>'
           + '<td class="num">'+personnes(i)+'</td>'
           + (tarif ? '<td class="num">'+(actif?fmtEuro(ep.du):'—')+'</td><td class="num">'+(actif?fmtEuro(ep.regle):'—')+'</td>'
             + '<td class="num">'+(actif ? (ep.reste>0 ? '<span class="solde-pos">'+fmtEuro(ep.reste)+'</span>' : (ep.reste<0 ? '<span class="solde-neg">'+fmtEuro(ep.reste)+'</span>' : '<span class="badge ok">Soldé</span>')) : '—')+'</td>' : '')
           + '<td><button class="btn btn-ghost btn-sm" data-action="ouvrir-compte" data-id="'+i.adherentId+'" data-ev="'+ev.id+'">💶 Versement / compte</button></td></tr>';
       }).join("");
       var bil = bilanEvenement(ev);
+      var att = enAttente(ev).reduce(function(sm,i){ return sm + personnes(i); }, 0);
       return '<div class="card" style="margin-bottom:16px"><div class="card-title">'+(ev.numero?'<span class="meta">'+numEv(ev)+'</span> ':'')+esc(ev.titre)+'</div>'
         + '<div class="meta">'+fmtDateCourt(ev.date)+' · '+esc(ev.lieu)+' · Organisé par '+esc(organisateurDe(ev)||"—")+' · '+esc(ev.statut)+'</div>'
-        + '<div class="meta"><strong>'+(illimite(ev) ? placesPrises(ev)+' personne(s)</strong> (places illimitées)' : placesPrises(ev)+' / '+ev.placesTotal+'</strong> places prises')
+        + '<div class="meta"><strong>'+(illimite(ev) ? placesPrises(ev)+' personne(s)</strong> (places illimitées)' : placesPrises(ev)+' / '+ev.placesTotal+'</strong> places prises')+(att?' · '+att+' en attente':'')
         + (tarif ? ' · À encaisser : <strong>'+fmtEuro(totDu)+'</strong> · Reçu : <strong>'+fmtEuro(totRegle)+'</strong> · Reste : <strong class="'+(totReste>0?'solde-pos':'')+'">'+fmtEuro(totReste)+'</strong>' : ' · Gratuit')+'</div>'
         + '<div class="meta">Frais engagés : <strong>'+fmtEuro(bil.engage)+'</strong> (payés '+fmtEuro(bil.fraisPayes)+')'+(bil.budget!==null?' sur un budget de '+fmtEuro(bil.budget):'')+(bil.recettesRecues?' · Autres recettes reçues : <strong>'+fmtEuro(bil.recettesRecues)+'</strong>':'')+' · Résultat actuel : <strong class="'+(bil.resultat<0?'solde-pos':'solde-neg')+'">'+fmtEuro(bil.resultat)+'</strong></div>'
         + (ins.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th>Inscrit</th><th class="num">Pers.</th>'
@@ -1119,7 +948,7 @@
   var ACTIONS = { cloture_defaut:"Évènement clôturé par défaut (justifié)", a_verifier_auto:"Passé automatiquement à « À vérifier »", cloture_evenement:"Évènement clôturé", statuts:"Statuts modifiés", import_donnees:"Données importées", reinitialisation_application:"Application réinitialisée", candidature_envoyee:"Candidature envoyée", candidature_validee:"Candidature validée", candidature_refusee:"Candidature refusée", budget:"Budget modifié", frais_ajout:"Frais ajouté", frais_suppression:"Frais supprimé", modif_accompagnants:"Accompagnants modifiés", reglement:"Règlement / remboursement enregistré", annulation_reglement:"Règlement annulé", creation_evenement:"Évènement créé", modification_evenement:"Évènement modifié", suppression_evenement:"Évènement supprimé",
     inscription_publique:"Inscription (adhérent)", inscription_gestion:"Inscription (gestion)", suppression_inscription:"Inscription retirée",
     promotion_attente:"Passé de l'attente à inscrit", demande_annulation:"Demande d'annulation", creation_adherent:"Adhérent ajouté",
-    suppression_adherent:"Adhérent supprimé", demande_suppression_fiche:"Demande de suppression de fiche", conservation_fiche:"Demande de suppression traitée (fiche conservée)", ajout_equipe:"Compte gestion ajouté", categories:"Catégories modifiées" };
+    suppression_adherent:"Adhérent supprimé", ajout_equipe:"Compte gestion ajouté", categories:"Catégories modifiées" };
   function renderHistorique(){
     var r = historiqueRecherche.trim().toLowerCase();
     var rows = state.historique.filter(function(h){
@@ -1195,7 +1024,7 @@
     renderInscritsZone();
     if(!compteAdherentId) document.getElementById("compte-root").innerHTML = "";
     renderCompteZone(); renderFinancesZone();
-    backfillNumeros(); backfillAffichages(); persisterAVerifier();
+    backfillNumeros(); persisterAVerifier();
   }
 
   // Numérote les évènements créés avant l'introduction des numéros (une seule fois, par le Directeur).
@@ -1207,17 +1036,6 @@
       avPersistes[ev.id] = true;
       updateDoc(doc(db,"evenements",ev.id), { statut: "À vérifier" }).then(function(){ logHistorique("a_verifier_auto", ev.titre); }).catch(function(err){ console.error("statut À vérifier:", err); });
     });
-  }
-  // Les inscriptions antérieures n'ont pas encore leur nom affiché : le Directeur les complète une fois, en arrière-plan.
-  var backfillAffEnCours = false;
-  function backfillAffichages(){
-    if(role !== "directeur" || backfillAffEnCours) return;
-    var sans = state.inscriptions.filter(function(i){ return !i.affichage && adherentById(i.adherentId); }).slice(0, 400);
-    if(!sans.length) return;
-    backfillAffEnCours = true;
-    var batch = writeBatch(db);
-    sans.forEach(function(i){ batch.update(doc(db,"inscriptions",i.id), { affichage: affichageAdherent(adherentById(i.adherentId)) }); });
-    batch.commit().then(function(){ backfillAffEnCours = false; }).catch(function(err){ console.error("affichage:", err); });
   }
   function backfillNumeros(){
     if(role !== "directeur" || backfillEnCours) return;
@@ -1347,26 +1165,7 @@
     }
     else if(a==="open-identite"){ identiteFormOpen = true; renderEvenements(); }
     else if(a==="cancel-identite"){ identiteFormOpen = false; identiteError = ""; renderEvenements(); }
-    else if(a==="changer-identite"){ monHistoriqueOuvert = false; demandeSuppFormOpen = false; evenementsFiltreMesInscriptions = false; moiAdherentId = null; try{ localStorage.removeItem("evt-moi"); }catch(x){} if(unsubMoiAdherent){ unsubMoiAdherent(); unsubMoiAdherent = null; } if(unsubMoiMouv){ unsubMoiMouv(); unsubMoiMouv = null; } state.adherents = []; state.mouvements = []; compteAdherentId = null; renderAll(); }
-    else if(a==="masquer-evenement"){ var mq = chargerMasquees(); mq[id] = true; sauverMasquees(mq); renderEvenements(); }
-    else if(a==="reafficher-evenements"){ sauverMasquees({}); renderEvenements(); }
-    else if(a==="basculer-mes-inscriptions"){ evenementsFiltreMesInscriptions = !evenementsFiltreMesInscriptions; renderEvenements(); }
-    else if(a==="supprimer-filtres-evenements"){ evenementsFiltreMesInscriptions = false; sauverMasquees({}); renderEvenements(); }
-    else if(a==="open-mon-historique"){ monHistoriqueOuvert = true; renderEvenements(); }
-    else if(a==="cancel-mon-historique"){ monHistoriqueOuvert = false; renderEvenements(); }
-    else if(a==="imprimer-mon-historique"){ imprimerMonHistorique(); }
-    else if(a==="open-demande-suppression"){ demandeSuppFormOpen = true; renderEvenements(); }
-    else if(a==="cancel-demande-suppression"){ demandeSuppFormOpen = false; renderEvenements(); }
-    else if(a==="activer-pause-mails" || a==="desactiver-pause-mails"){
-      if(role !== "public" || !moiAdherentId) return;
-      updateDoc(doc(db,"adherents",moiAdherentId), { pauseMails: a==="activer-pause-mails" }).catch(reportError);
-    }
-    else if(a==="conserver-fiche"){
-      if(role !== "directeur") return;
-      var adC = adherentById(id);
-      updateDoc(doc(db,"adherents",id), { demandeSuppression: false, demandeSuppressionCommentaire: "" })
-        .then(function(){ logHistorique("conservation_fiche", nomAdherent(adC)); }).catch(reportError);
-    }
+    else if(a==="changer-identite"){ moiAdherentId = null; try{ localStorage.removeItem("evt-moi"); }catch(x){} if(unsubMoiAdherent){ unsubMoiAdherent(); unsubMoiAdherent = null; } if(unsubMoiMouv){ unsubMoiMouv(); unsubMoiMouv = null; } state.adherents = []; state.mouvements = []; compteAdherentId = null; renderAll(); }
     else if(a==="inscrire-moi"){
       var champAcc = document.getElementById("acc-"+id);
       inscrire(id, moiAdherentId, champAcc ? parseNoms(champAcc.value) : [], "public");
@@ -1404,7 +1203,6 @@
       }).catch(reportError);
     }
     else if(a==="imprimer-bilan"){ imprimerBilan(id); }
-    else if(a==="imprimer-evenement"){ imprimerEvenement(id); }
     else if(a==="supprimer-brouillon-frais"){ brouillon.frais = brouillon.frais.filter(function(f){ return f.id !== id; }); renderFinancesZone(); }
     else if(a==="supprimer-brouillon-rappel"){ brouillon.rappels = brouillon.rappels.filter(function(r){ return r.id !== id; }); renderFinancesZone(); }
     else if(a==="rappels-types" && !modalEvenementId){
@@ -1453,6 +1251,15 @@
     else if(a==="inscrire-adherent"){
       var s = document.getElementById("sel-adherent"), c = document.getElementById("sel-acc");
       if(s && s.value) inscrire(id, s.value, c ? parseNoms(c.value) : [], "gestion");
+    }
+    else if(a==="promouvoir"){
+      var i1 = state.inscriptions.find(function(x){ return x.id === id; }); var e1 = i1 && evenementById(i1.evenementId);
+      if(i1 && e1 && personnes(i1) > placesRestantes(e1) && !confirm("Il ne reste pas assez de places : l'évènement sera en surréservation. Continuer ?")) return;
+      if(!i1 || !e1) return;
+      var b1 = writeBatch(db);
+      b1.update(doc(db,"inscriptions",id), {statut:"inscrit"});
+      ajouterMouvement(b1, e1, i1.adherentId, "promotion", personnes(i1), montantDu(e1,i1), "gestion");
+      b1.commit().then(function(){ logHistorique("promotion_attente", e1.titre+" — "+nomAdherent(adherentById(i1.adherentId))); }).catch(reportError);
     }
     else if(a==="ignorer-annulation"){ updateDoc(doc(db,"inscriptions",id), {demandeAnnulation:false}).catch(reportError); }
     else if(a==="retirer"){
@@ -1584,14 +1391,14 @@
     if(acc > accMax(ev)){ alert(accMax(ev) > 0 ? "Cet évènement accepte au maximum "+accMax(ev)+" accompagnant(s)." : "Cet évènement n'accepte pas d'accompagnants."); return; }
     if(origine === "public" && (ev.statut !== "Ouvert" || evenementPasse(ev) || !adh.actif)) return;
     if(inscriptionsDe(evId).some(function(i){ return i.adherentId === adhId; })){ alert("Déjà inscrit à cet évènement."); return; }
-    if((1 + acc) > placesRestantes(ev)){ alert("Il ne reste pas assez de places pour cette inscription."); return; }
+    var statut = (1 + acc) <= placesRestantes(ev) ? "inscrit" : "attente";
     var batch = writeBatch(db);
-    batch.set(doc(collection(db,"inscriptions")), { evenementId: evId, adherentId: adhId, nbAccompagnants: acc, accompagnants: noms, statut: "inscrit",
-      present: false, paye: false, demandeAnnulation: false, affichage: affichageAdherent(adh), creeLe: serverTimestamp() });
-    ajouterMouvement(batch, ev, adhId, "inscription", 1 + acc, (ev.tarif||0) * (1 + acc), origine);
+    batch.set(doc(collection(db,"inscriptions")), { evenementId: evId, adherentId: adhId, nbAccompagnants: acc, accompagnants: noms, statut: statut,
+      present: false, paye: false, demandeAnnulation: false, creeLe: serverTimestamp() });
+    ajouterMouvement(batch, ev, adhId, statut === "inscrit" ? "inscription" : "attente", 1 + acc, statut === "inscrit" ? (ev.tarif||0) * (1 + acc) : 0, origine);
     batch.commit().then(function(){
       logHistorique(origine==="public" ? "inscription_publique" : "inscription_gestion",
-        ev.titre+" — "+nomAdherent(adh),
+        ev.titre+" — "+nomAdherent(adh)+(statut==="attente"?" (liste d'attente)":""),
         origine==="public" ? nomAdherent(adh) : undefined, origine==="public" ? "public" : undefined);
     }).catch(reportError);
   }
@@ -1652,14 +1459,6 @@
       signInWithEmailAndPassword(auth, e.target.email.value.trim(), e.target.code.value)
         .then(function(){ loginFormOpen = false; loginError = ""; loginInfo = ""; })
         .catch(function(){ loginError = "Email ou code incorrect."; renderAdminRow(); });
-    }
-    else if(id === "form-demande-suppression"){
-      e.preventDefault();
-      if(role !== "public" || !moiAdherentId) return;
-      var moiS = adherentById(moiAdherentId), comS = e.target.commentaire.value.trim().slice(0,500);
-      updateDoc(doc(db,"adherents",moiAdherentId), { demandeSuppression: true, demandeSuppressionCommentaire: comS, demandeSuppressionLe: serverTimestamp() })
-        .then(function(){ logHistorique("demande_suppression_fiche", nomAdherent(moiS), nomAdherent(moiS), "public"); demandeSuppFormOpen = false; renderEvenements(); })
-        .catch(reportError);
     }
     else if(id === "form-identite"){
       e.preventDefault();
