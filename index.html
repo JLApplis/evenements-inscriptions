@@ -182,7 +182,7 @@
     from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
   // ====== À REMPLIR : configuration de TON nouveau projet Firebase (voir LISEZ-MOI.md) ======
-  const NOM_ASSOCIATION = "Mon association";
+  const NOM_ASSOCIATION = "Les ami.es des Rancy";
   const VERSION_APPLI = "1.0";
   const firebaseConfig = {
     apiKey: "AIzaSyAClU986rgOr7uWWzKpQXl8NYZF6odxzoo",
@@ -225,11 +225,11 @@
   var modalEvenementId = null, modalOuverte = false, modalErreur = "", modalCreeId = null, modalStatutBrouillon = null, modalJustifBrouillon = null, brouillon = { budget: null, frais: [], rappels: [] };
   var adherentFormOpen = false, adherentErreur = "";
   var adherentsRecherche = "", adherentsTri = "nom";
-  var evenementsRecherche = "", evenementsFiltreStatut = "", evenementsAvenirSeulement = true, evenementsMiens = false, evenementsFiltreTuile = "", adherentsFiltreActifs = false;
+  var evenementsRecherche = "", evenementsFiltreStatut = "", evenementsAvenirSeulement = true, evenementsMiens = false, evenementsFiltreTuile = "", adherentsFiltreActifs = false, adherentsFiltreCandidatures = false;
   var historiqueRecherche = "";
   var equipeFormOpen = false, equipeErreur = "";
   var candidatureFormOpen = false, candidatureError = "", candidatureEnvoyee = false, mailAEnvoyer = null;
-  var fraisErreur = "", recapAvenirSeulement = true, compteAdherentId = null, compteEvenementId = null, compteErreur = "", backfillEnCours = false;
+  var fraisEnEdition = null, fraisErreur = "", recapAvenirSeulement = true, compteAdherentId = null, compteEvenementId = null, compteErreur = "", backfillEnCours = false;
   var unsubCandidatures = null, unsubFrais = null, unsubFiches = null, unsubMoi = null, unsubMoiAdherent = null, unsubMoiMouv = null, unsubMouvements = null, unsubAdherents = null, unsubGestionnaires = null, unsubHistorique = null;
   var unsubEvenements = null, unsubInscriptions = null, unsubParametres = null;
 
@@ -649,6 +649,40 @@
     renderInscritsZone(); renderFinancesZone();
   }
 
+  // Formulaire d'ajout d'un frais ou d'une recette ; devient « Modifier » quand fraisEnEdition désigne une ligne (enregistrée ou du brouillon).
+  function fraisAModifier(){
+    if(!fraisEnEdition) return null;
+    var src = modalEvenementId ? state.frais : brouillon.frais;
+    return src.find(function(f){ return f.id === fraisEnEdition; }) || null;
+  }
+  function formFraisHtml(){
+    var d = new Date(), p2 = function(n){ return String(n).padStart(2,"0"); };
+    var auj = d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
+    var f = fraisAModifier(), edit = !!f;
+    f = f || {};
+    function opt(v, lib, cur){ return '<option value="'+v+'"'+(cur===v?' selected':'')+'>'+lib+'</option>'; }
+    return '<form id="form-frais" class="form" style="margin-top:10px"><div class="section-title">'+(edit ? "Modifier le frais ou la recette" : "Ajouter un frais ou une recette")+'</div><div class="field-row">'
+      + '<div class="field"><label for="fr-sens">Type</label><select id="fr-sens" name="sens">'+opt("depense","Frais engagé",f.sens==="recette"?"recette":"depense")+opt("recette","Autre recette",f.sens==="recette"?"recette":"depense")+'</select></div>'
+      + champ("Date","date","date",f.date||auj,true) + champ("Libellé","libelle","text",f.libelle||"",true) + champ("Fournisseur / origine (facultatif)","fournisseur","text",f.fournisseur||"",false)
+      + '<div class="field"><label for="fr-cat">Catégorie</label><input id="fr-cat" name="categorie" list="fr-cats" placeholder="Choisir ou écrire"'+(f.categorie?' value="'+esc(f.categorie)+'"':'')+'><datalist id="fr-cats">'
+      + FRAIS_CATEGORIES.concat(["Subvention","Sponsor / don","Buvette","Vente"]).map(function(c){ return '<option value="'+esc(c)+'">'; }).join("")+'</datalist></div>'
+      + champ("Montant (€)","montant","number",typeof f.montant === "number" ? f.montant : "",true,'min="0.01" step="0.01" ')
+      + '<div class="field"><label for="fr-st">État</label><select id="fr-st" name="statut">'+opt("a_payer","À payer / attendue",f.statut==="paye"?"paye":"a_payer")+opt("paye","Payé / reçue",f.statut==="paye"?"paye":"a_payer")+'</select></div>'
+      + champ("N° de facture (facultatif)","reference","text",f.reference||"",false) + champ("Lien du justificatif (facultatif, https://…)","lien","url",f.lien||"",false)
+      + '</div>' + (fraisErreur ? '<div class="error-text">'+esc(fraisErreur)+'</div>' : '')
+      + '<div class="form-hint">Le justificatif n\'est pas stocké dans l\'appli : colle ici le lien d\'un fichier rangé ailleurs (Drive…).</div>'
+      + '<div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">'+(edit ? "💾 Enregistrer la modification" : "Ajouter")+'</button>'
+      + (edit ? '<button type="button" class="btn btn-ghost btn-sm" data-action="annuler-modif-frais">Annuler la modification</button>' : '')+'</div></form>';
+  }
+  // Remplace uniquement le formulaire des frais : ce qui est en cours de saisie dans le reste de la fenêtre n'est pas touché.
+  function renderFormFrais(montrer){
+    var el = document.getElementById("form-frais");
+    if(!el) return;
+    el.outerHTML = formFraisHtml();
+    var n = document.getElementById("form-frais");
+    if(montrer && n && n.scrollIntoView) n.scrollIntoView({block:"center"});
+  }
+
   function formulaireFrais(){
     var d = new Date(), p2 = function(n){ return String(n).padStart(2,"0"); };
     var auj = d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
@@ -657,17 +691,7 @@
     return '<form id="form-budget" class="form" style="margin-top:10px"><div class="section-title">Budget prévu</div><div class="field-row">'
       + champ("Budget prévu pour l\'évènement (€, vide = aucun)","budget","number",budgetVal,false,'min="0" step="0.01" ')
       + '</div><div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Enregistrer le budget</button></div></form>'
-      + '<form id="form-frais" class="form" style="margin-top:10px"><div class="section-title">Ajouter un frais ou une recette</div><div class="field-row">'
-      + '<div class="field"><label for="fr-sens">Type</label><select id="fr-sens" name="sens"><option value="depense">Frais engagé</option><option value="recette">Autre recette</option></select></div>'
-      + champ("Date","date","date",auj,true) + champ("Libellé","libelle","text","",true) + champ("Fournisseur / origine (facultatif)","fournisseur","text","",false)
-      + '<div class="field"><label for="fr-cat">Catégorie</label><input id="fr-cat" name="categorie" list="fr-cats" placeholder="Choisir ou écrire"><datalist id="fr-cats">'
-      + FRAIS_CATEGORIES.concat(["Subvention","Sponsor / don","Buvette","Vente"]).map(function(c){ return '<option value="'+esc(c)+'">'; }).join("")+'</datalist></div>'
-      + champ("Montant (€)","montant","number","",true,'min="0.01" step="0.01" ')
-      + '<div class="field"><label for="fr-st">État</label><select id="fr-st" name="statut"><option value="a_payer">À payer / attendue</option><option value="paye">Payé / reçue</option></select></div>'
-      + champ("N° de facture (facultatif)","reference","text","",false) + champ("Lien du justificatif (facultatif, https://…)","lien","url","",false)
-      + '</div>' + (fraisErreur ? '<div class="error-text">'+esc(fraisErreur)+'</div>' : '')
-      + '<div class="form-hint">Le justificatif n\'est pas stocké dans l\'appli : colle ici le lien d\'un fichier rangé ailleurs (Drive…).</div>'
-      + '<div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Ajouter</button></div></form>'
+      + formFraisHtml()
       + '<form id="form-rappel" class="form" style="margin-top:10px"><div class="section-title">Ajouter un rappel</div><div class="field-row">'
       + champ("Rappel (assurance, autorisation, matériel…)","texte","text","",true)
       + '</div><div class="form-actions"><button type="submit" class="btn btn-ghost btn-sm">Ajouter le rappel</button>'
@@ -730,7 +754,7 @@
         + '<div class="meta">Budget prévu : <strong>'+(brouillon.budget===null?"—":fmtEuro(brouillon.budget))+'</strong> · Frais engagés : <strong>'+fmtEuro(dep)+'</strong> · Autres recettes : <strong>'+fmtEuro(rec)+'</strong></div>'
         + (brouillon.frais.length ? '<div class="table-scroll"><table class="tbl"><thead><tr><th>Date</th><th>Libellé</th><th>Type</th><th class="num">Montant</th><th></th></tr></thead><tbody>'
             + brouillon.frais.map(function(f){ return '<tr><td>'+fmtDateCourt(f.date)+'</td><td>'+esc(f.libelle)+(f.fournisseur?'<div class="meta">'+esc(f.fournisseur)+'</div>':'')+'</td><td>'+(f.sens==="recette"?"Recette":"Frais")+' · '+(f.statut==="paye"?"payé/reçu":"à payer/attendu")+'</td><td class="num">'+fmtEuro(f.montant)+'</td>'
-              + '<td><button type="button" class="btn-danger-ghost" data-action="supprimer-brouillon-frais" data-id="'+f.id+'">Retirer</button></td></tr>'; }).join("")
+              + '<td style="white-space:nowrap"><button type="button" class="btn btn-ghost btn-sm" data-action="modifier-frais" data-id="'+f.id+'">✏ Modifier</button> <button type="button" class="btn-danger-ghost" data-action="supprimer-brouillon-frais" data-id="'+f.id+'">Retirer</button></td></tr>'; }).join("")
             + '</tbody></table></div>' : '<div class="meta">Aucun frais saisi pour le moment.</div>')
         + (brouillon.rappels.length ? '<div class="section-title" style="margin-top:10px">🔔 Rappels</div>' + brouillon.rappels.map(function(r){ return '<div class="meta">• '+esc(r.texte)+' <button type="button" class="link-btn" data-action="supprimer-brouillon-rappel" data-id="'+r.id+'">Retirer</button></div>'; }).join("") : '');
       return;
@@ -747,7 +771,7 @@
             + ((f.reference||lienSur(f.lien)) ? '<div class="meta">'+(f.reference?'Réf. '+esc(f.reference)+' ':'')+(lienSur(f.lien)?'<a href="'+esc(lienSur(f.lien))+'" target="_blank" rel="noopener">justificatif ↗</a>':'')+'</div>' : '')+'</td>'
             + '<td>'+esc(f.categorie||"")+'</td><td class="num">'+fmtEuro(f.montant)+'</td>'
             + '<td><label class="check"><input type="checkbox" data-action="toggle-frais-paye" data-id="'+f.id+'" '+(f.statut==="paye"?'checked':'')+'> '+(recette?"Reçue":"Payé")+'</label></td>'
-            + '<td><button type="button" class="btn-danger-ghost" data-action="supprimer-frais" data-id="'+f.id+'">Supprimer</button></td></tr>'; }).join("")
+            + '<td style="white-space:nowrap"><button type="button" class="btn btn-ghost btn-sm" data-action="modifier-frais" data-id="'+f.id+'">✏ Modifier</button> <button type="button" class="btn-danger-ghost" data-action="supprimer-frais" data-id="'+f.id+'">Supprimer</button></td></tr>'; }).join("")
         + '</tbody></table></div>';
     }
     var aFaire = b.rappels.filter(function(r){ return !r.fait; }).length;
@@ -832,6 +856,13 @@
         return '<div class="inscrit-row"><div><strong>'+esc(c.prenom+" "+c.nom)+'</strong> <span class="meta">'+esc(c.email)+'</span></div><div class="inscrit-actions">'
           + '<button class="btn btn-primary btn-sm" data-action="valider-candidature" data-id="'+c.id+'" '+(authReady?"":"disabled")+'>Valider</button>'
           + '<button class="btn-danger-ghost" data-action="refuser-candidature" data-id="'+c.id+'">Refuser</button></div></div>'; }).join("") + '</div>' : '';
+    if(adherentsFiltreCandidatures){
+      document.getElementById("panel-adherents").innerHTML = mailHtml
+        + '<div class="toolbar"><div><h2>Candidatures à valider</h2></div></div>'
+        + '<div class="alert" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">Filtre actif : candidatures à valider seulement <button type="button" class="btn btn-ghost btn-sm" data-action="retirer-filtre-candidatures">Retirer le filtre (voir tous les adhérents)</button></div>'
+        + (candHtml || '<div class="empty-state">Plus aucune candidature à valider.</div>');
+      return;
+    }
     document.getElementById("panel-adherents").innerHTML = mailHtml + candHtml +
       '<div class="toolbar"><div><h2>Adhérents</h2><div class="toolbar-meta">'+state.adherents.length+' fiche(s)</div></div><button class="btn btn-primary" data-action="open-adherent">+ Ajouter un adhérent</button></div>'
       + form + (adherentsFiltreActifs ? '<div class="alert" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">Filtre actif : adhérents actifs seulement <button type="button" class="btn btn-ghost btn-sm" data-action="retirer-filtre-actifs">Retirer le filtre</button></div>' : '')
@@ -945,7 +976,7 @@
   }
 
   // ---------- historique ----------
-  var ACTIONS = { cloture_defaut:"Évènement clôturé par défaut (justifié)", a_verifier_auto:"Passé automatiquement à « À vérifier »", cloture_evenement:"Évènement clôturé", statuts:"Statuts modifiés", import_donnees:"Données importées", reinitialisation_application:"Application réinitialisée", candidature_envoyee:"Candidature envoyée", candidature_validee:"Candidature validée", candidature_refusee:"Candidature refusée", budget:"Budget modifié", frais_ajout:"Frais ajouté", frais_suppression:"Frais supprimé", modif_accompagnants:"Accompagnants modifiés", reglement:"Règlement / remboursement enregistré", annulation_reglement:"Règlement annulé", creation_evenement:"Évènement créé", modification_evenement:"Évènement modifié", suppression_evenement:"Évènement supprimé",
+  var ACTIONS = { cloture_defaut:"Évènement clôturé par défaut (justifié)", a_verifier_auto:"Passé automatiquement à « À vérifier »", cloture_evenement:"Évènement clôturé", statuts:"Statuts modifiés", import_donnees:"Données importées", reinitialisation_application:"Application réinitialisée", candidature_envoyee:"Candidature envoyée", candidature_validee:"Candidature validée", candidature_refusee:"Candidature refusée", budget:"Budget modifié", frais_ajout:"Frais ajouté", frais_modification:"Frais modifié", frais_suppression:"Frais supprimé", modif_accompagnants:"Accompagnants modifiés", reglement:"Règlement / remboursement enregistré", annulation_reglement:"Règlement annulé", creation_evenement:"Évènement créé", modification_evenement:"Évènement modifié", suppression_evenement:"Évènement supprimé",
     inscription_publique:"Inscription (adhérent)", inscription_gestion:"Inscription (gestion)", suppression_inscription:"Inscription retirée",
     promotion_attente:"Passé de l'attente à inscrit", demande_annulation:"Demande d'annulation", creation_adherent:"Adhérent ajouté",
     suppression_adherent:"Adhérent supprimé", ajout_equipe:"Compte gestion ajouté", categories:"Catégories modifiées" };
@@ -1049,7 +1080,7 @@
     batch.commit().catch(function(err){ console.error("numérotation:", err); });
   }
 
-  document.querySelectorAll(".tab").forEach(function(b){ b.addEventListener("click", function(){ switchTab(b.getAttribute("data-tab")); renderAll(); }); });
+  document.querySelectorAll(".tab").forEach(function(b){ b.addEventListener("click", function(){ adherentsFiltreCandidatures = false; switchTab(b.getAttribute("data-tab")); renderAll(); }); });
 
   // ---------- actions ----------
   // ---------- Onglet Données (Directeur) : export, import, réinitialisation ----------
@@ -1149,7 +1180,7 @@
     });
   }
 
-  function fermerModal(){ modalStatutBrouillon = null; modalJustifBrouillon = null; brouillon = { budget: null, frais: [], rappels: [] }; modalCreeId = null; modalOuverte = false; modalEvenementId = null; modalErreur = ""; renderModal(); }
+  function fermerModal(){ fraisEnEdition = null; fraisErreur = ""; modalStatutBrouillon = null; modalJustifBrouillon = null; brouillon = { budget: null, frais: [], rappels: [] }; modalCreeId = null; modalOuverte = false; modalEvenementId = null; modalErreur = ""; renderModal(); }
 
   document.addEventListener("click", function(e){
     var el = e.target.closest("[data-action]");
@@ -1203,7 +1234,9 @@
       }).catch(reportError);
     }
     else if(a==="imprimer-bilan"){ imprimerBilan(id); }
-    else if(a==="supprimer-brouillon-frais"){ brouillon.frais = brouillon.frais.filter(function(f){ return f.id !== id; }); renderFinancesZone(); }
+    else if(a==="supprimer-brouillon-frais"){ brouillon.frais = brouillon.frais.filter(function(f){ return f.id !== id; }); if(fraisEnEdition === id){ fraisEnEdition = null; renderFormFrais(false); } renderFinancesZone(); }
+    else if(a==="modifier-frais"){ fraisEnEdition = id; fraisErreur = ""; renderFormFrais(true); }
+    else if(a==="annuler-modif-frais"){ fraisEnEdition = null; fraisErreur = ""; renderFormFrais(false); }
     else if(a==="supprimer-brouillon-rappel"){ brouillon.rappels = brouillon.rappels.filter(function(r){ return r.id !== id; }); renderFinancesZone(); }
     else if(a==="rappels-types" && !modalEvenementId){
       var dejaB = brouillon.rappels.map(function(r){ return r.texte; });
@@ -1224,7 +1257,7 @@
       var fS = state.frais.find(function(x){ return x.id === id; }); if(!fS) return;
       var evS = evenementById(fS.evenementId);
       if(!confirm("Supprimer le frais « "+fS.libelle+" » ("+fmtEuro(fS.montant)+") ?")) return;
-      deleteDoc(doc(db,"frais",id)).then(function(){ logHistorique("frais_suppression", (evS?evS.titre:"")+" — "+fS.libelle+" "+fmtEuro(fS.montant)); }).catch(reportError);
+      deleteDoc(doc(db,"frais",id)).then(function(){ if(fraisEnEdition === id){ fraisEnEdition = null; renderFormFrais(false); } logHistorique("frais_suppression", (evS?evS.titre:"")+" — "+fS.libelle+" "+fmtEuro(fS.montant)); }).catch(reportError);
     }
     else if(a==="modifier-acc"){
       var champNom = document.getElementById("acc-nom-"+id);
@@ -1237,8 +1270,8 @@
         logHistorique("demande_annulation", ev0 ? ev0.titre : "", ad0 ? nomAdherent(ad0) : "Adhérent", "public");
       }).catch(reportError);
     }
-    else if(a==="open-evenement"){ modalStatutBrouillon = null; modalJustifBrouillon = null; brouillon = { budget: null, frais: [], rappels: [] }; modalOuverte = true; modalEvenementId = null; modalErreur = ""; renderModal(); }
-    else if(a==="edit-evenement"){ modalStatutBrouillon = null; modalJustifBrouillon = null; modalOuverte = true; modalEvenementId = id; modalErreur = ""; renderModal(); }
+    else if(a==="open-evenement"){ fraisEnEdition = null; modalStatutBrouillon = null; modalJustifBrouillon = null; brouillon = { budget: null, frais: [], rappels: [] }; modalOuverte = true; modalEvenementId = null; modalErreur = ""; renderModal(); }
+    else if(a==="edit-evenement"){ fraisEnEdition = null; modalStatutBrouillon = null; modalJustifBrouillon = null; modalOuverte = true; modalEvenementId = id; modalErreur = ""; renderModal(); }
     else if(a==="cancel-modal"){ fermerModal(); }
     else if(a==="close-modal"){ if(e.target === el) fermerModal(); }
     else if(a==="delete-evenement"){
@@ -1294,9 +1327,10 @@
       evenementsAvenirSeulement = ["annulation","impayes"].indexOf(evenementsFiltreTuile) < 0; evenementsMiens = ["annulation","impayes"].indexOf(evenementsFiltreTuile) >= 0;
       switchTab("evenements"); renderEvenements();
     }
-    else if(a==="tuile-candidatures"){ adherentsFiltreActifs = false; adherentsRecherche = ""; switchTab("adherents"); renderAdherents(); var cc = document.getElementById("panel-adherents"); if(cc && cc.scrollIntoView) cc.scrollIntoView(); }
-    else if(a==="tuile-adherents-actifs"){ adherentsFiltreActifs = true; adherentsRecherche = ""; switchTab("adherents"); renderAdherents(); }
+    else if(a==="tuile-candidatures"){ adherentsFiltreActifs = false; adherentsFiltreCandidatures = true; adherentsRecherche = ""; switchTab("adherents"); renderAdherents(); }
+    else if(a==="tuile-adherents-actifs"){ adherentsFiltreCandidatures = false; adherentsFiltreActifs = true; adherentsRecherche = ""; switchTab("adherents"); renderAdherents(); }
     else if(a==="retirer-filtre-tuile"){ evenementsFiltreTuile = ""; evenementsAvenirSeulement = true; evenementsMiens = false; renderEvenements(); }
+    else if(a==="retirer-filtre-candidatures"){ adherentsFiltreCandidatures = false; renderAdherents(); }
     else if(a==="retirer-filtre-actifs"){ adherentsFiltreActifs = false; renderAdherents(); }
     else if(a==="filtre-a-verifier"){ evenementsFiltreTuile = ""; evenementsFiltreStatut = "À vérifier"; evenementsAvenirSeulement = false; evenementsMiens = true; recherchevide(); switchTab("evenements"); renderEvenements(); }
     else if(a==="filtre-clotures-defaut"){ evenementsFiltreTuile = ""; evenementsFiltreStatut = "Clôturé par défaut"; evenementsAvenirSeulement = false; evenementsMiens = false; recherchevide(); switchTab("evenements"); renderEvenements(); }
@@ -1546,6 +1580,12 @@
       var fb = e.target, montB = Math.round(parseFloat(fb.montant.value)*100)/100, lienB = fb.lien.value.trim();
       if(!(montB > 0) || !fb.date.value){ alert("Date ou montant invalide."); return; }
       if(lienB && !lienSur(lienB)){ alert("Le lien doit commencer par http:// ou https://."); return; }
+      var fbEdit = fraisAModifier();
+      if(fbEdit){
+        Object.assign(fbEdit, { sens: fb.sens.value === "recette" ? "recette" : "depense", date: fb.date.value, libelle: fb.libelle.value.trim(), fournisseur: fb.fournisseur.value.trim(),
+          categorie: fb.categorie.value.trim(), reference: fb.reference.value.trim(), lien: lienB, montant: montB, statut: fb.statut.value === "paye" ? "paye" : "a_payer" });
+        fraisEnEdition = null; fraisErreur = ""; renderFinancesZone(); renderFormFrais(false); return;
+      }
       brouillon.frais.push({ id: "b"+Date.now()+"-"+brouillon.frais.length, sens: fb.sens.value === "recette" ? "recette" : "depense", date: fb.date.value,
         libelle: fb.libelle.value.trim(), fournisseur: fb.fournisseur.value.trim(), categorie: fb.categorie.value.trim(), reference: fb.reference.value.trim(),
         lien: lienB, montant: montB, statut: fb.statut.value === "paye" ? "paye" : "a_payer", parNom: moiNom });
@@ -1568,6 +1608,17 @@
       var lienF = ff.lien.value.trim();
       if(!evF || !peutGerer(evF) || !(montF > 0) || !ff.date.value){ fraisErreur = "Date ou montant invalide."; renderModal(); return; }
       if(lienF && !lienSur(lienF)){ fraisErreur = "Le lien doit commencer par http:// ou https://."; renderModal(); return; }
+      var fEdit = fraisAModifier();
+      if(fEdit){
+        var champsF = { sens: ff.sens.value === "recette" ? "recette" : "depense", date: ff.date.value, libelle: ff.libelle.value.trim(), fournisseur: ff.fournisseur.value.trim(),
+          categorie: ff.categorie.value.trim(), reference: ff.reference.value.trim(), lien: lienF, montant: montF, statut: ff.statut.value === "paye" ? "paye" : "a_payer" };
+        updateDoc(doc(db,"frais",fEdit.id), champsF).then(function(){
+          fraisEnEdition = null; fraisErreur = "";
+          logHistorique("frais_modification", evF.titre+" — "+(champsF.sens==="recette"?"recette ":"")+champsF.libelle+" "+fmtEuro(montF)+" (avant : "+fEdit.libelle+" "+fmtEuro(fEdit.montant)+")");
+          renderFinancesZone(); renderFormFrais(false);
+        }).catch(reportError);
+        return;
+      }
       addDoc(collection(db,"frais"), { evenementId: evF.id, organisateurUid: evF.organisateurUid || "", sens: ff.sens.value === "recette" ? "recette" : "depense",
         date: ff.date.value, libelle: ff.libelle.value.trim(), fournisseur: ff.fournisseur.value.trim(), categorie: ff.categorie.value.trim(),
         reference: ff.reference.value.trim(), lien: lienF, montant: montF, statut: ff.statut.value === "paye" ? "paye" : "a_payer",
