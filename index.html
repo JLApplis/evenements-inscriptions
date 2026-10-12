@@ -41,6 +41,7 @@
   .shell{max-width:1200px;margin:0 auto;padding:0 16px 72px}
   .hero-wrap{background:var(--accent-deep);color:#fff}
   .hero-inner{max-width:1200px;margin:0 auto;padding:22px 16px 26px}
+  #version-appli{display:inline-block;background:rgba(255,255,255,.2);padding:4px 12px;border-radius:999px;text-transform:none;letter-spacing:.02em}
   .eyebrow{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.75);font-weight:700}
   .title{font-size:clamp(1.5rem,3.4vw,2rem);margin-top:6px;color:#fff}
   .subtitle{color:rgba(255,255,255,.85);max-width:60ch;margin-top:8px;font-size:.92rem}
@@ -183,7 +184,7 @@
 
   // ====== À REMPLIR : configuration de TON nouveau projet Firebase (voir LISEZ-MOI.md) ======
   const NOM_ASSOCIATION = "Les ami.es des Rancy";
-  const VERSION_APPLI = "2026-10-11 23:21";
+  const VERSION_APPLI = "2026-10-12 13h45";
   const firebaseConfig = {
     apiKey: "AIzaSyAClU986rgOr7uWWzKpQXl8NYZF6odxzoo",
     authDomain: "evenements-adherents.firebaseapp.com",
@@ -194,8 +195,10 @@
   };
   // =========================================================================================
 
-  document.getElementById("version-appli").textContent = "Version " + VERSION_APPLI;
-  document.title = "Évènements — " + NOM_ASSOCIATION;
+  const vm = VERSION_APPLI.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}h\d{2})$/);
+  const VERSION_AFFICHEE = vm ? "Version DEMO du " + vm[3] + "/" + vm[2] + "/" + vm[1] + " à " + vm[4] : "Version DEMO";
+  document.getElementById("version-appli").textContent = VERSION_AFFICHEE;
+  document.title = "Évènements — " + NOM_ASSOCIATION + " — " + VERSION_AFFICHEE;
   document.getElementById("footer").textContent = NOM_ASSOCIATION + " — gestion des évènements.";
 
   if(String(firebaseConfig.apiKey).indexOf("REMPLACER") === 0){
